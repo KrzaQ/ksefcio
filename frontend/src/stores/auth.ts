@@ -1,24 +1,41 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref<string | null>(null)
+  // Session state — memory-only, not persisted
+  const signingKey = shallowRef<CryptoKey | null>(null)
+  const unwrapKey = shallowRef<CryptoKey | null>(null)
+  const certDer = shallowRef<Uint8Array | null>(null)
   const nip = ref<string | null>(null)
   const name = ref<string | null>(null)
+  const aesKey = shallowRef<CryptoKey | null>(null)
 
-  const isAuthenticated = computed(() => token.value !== null)
+  const isAuthenticated = computed(() => signingKey.value !== null)
 
-  function login(jwt: string, userNip: string, userName: string) {
-    token.value = jwt
-    nip.value = userNip
-    name.value = userName
+  function login(
+    newSigningKey: CryptoKey,
+    newUnwrapKey: CryptoKey,
+    newCertDer: Uint8Array,
+    newNip: string,
+    newName: string,
+    newAesKey: CryptoKey,
+  ) {
+    signingKey.value = newSigningKey
+    unwrapKey.value = newUnwrapKey
+    certDer.value = newCertDer
+    nip.value = newNip
+    name.value = newName
+    aesKey.value = newAesKey
   }
 
   function logout() {
-    token.value = null
+    signingKey.value = null
+    unwrapKey.value = null
+    certDer.value = null
     nip.value = null
     name.value = null
+    aesKey.value = null
   }
 
-  return { token, nip, name, isAuthenticated, login, logout }
+  return { signingKey, unwrapKey, certDer, nip, name, aesKey, isAuthenticated, login, logout }
 })

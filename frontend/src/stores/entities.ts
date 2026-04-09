@@ -2,11 +2,10 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
 export interface Entity {
-  nip: string
+  nip: string       // NIP or PESEL (user identifier from cert)
   name: string
-  certPem: string
-  keyPem: string
-  aesKey: string | null  // base64-encoded, null until first setup
+  certPem: string   // PEM certificate
+  keyPem: string    // Encrypted PKCS#8 PEM (password-protected)
 }
 
 const STORAGE_KEY = 'ksefcio-entities'

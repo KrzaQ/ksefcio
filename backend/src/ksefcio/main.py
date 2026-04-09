@@ -8,8 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ksefcio.auth import get_current_user
-from ksefcio.auth import router as auth_router
+from ksefcio.auth import AuthenticatedUser, get_authenticated_user
 from ksefcio.db import (
     get_db,
     get_invoices,
@@ -41,7 +40,6 @@ if os.environ.get("KSEFCIO_DEV"):
         allow_headers=["*"],
     )
 
-app.include_router(auth_router)
 app.include_router(ksef_router)
 
 
@@ -54,8 +52,8 @@ class WrappedKeyRequest(BaseModel):
 
 
 @app.get("/api/users/me")
-async def get_me(user=Depends(get_current_user), db=Depends(get_db)):
-    db_user = await get_user(db, user["nip"])
+async def get_me(user: AuthenticatedUser = Depends(get_authenticated_user), db=Depends(get_db)):
+    db_user = await get_user(db, user.nip)
     if not db_user:
         raise HTTPException(404, "User not found")
     return {
@@ -73,10 +71,12 @@ async def get_me(user=Depends(get_current_user), db=Depends(get_db)):
 
 @app.post("/api/users/me/wrapped-key")
 async def set_wrapped_key(
-    req: WrappedKeyRequest, user=Depends(get_current_user), db=Depends(get_db)
+    req: WrappedKeyRequest,
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+    db=Depends(get_db),
 ):
     await update_wrapped_key(
-        db, user["nip"], base64.b64decode(req.wrapped_aes_key), req.cert_fingerprint
+        db, user.nip, base64.b64decode(req.wrapped_aes_key), req.cert_fingerprint
     )
     return {"ok": True}
 
@@ -96,10 +96,10 @@ class InvoiceFlags(BaseModel):
 @app.get("/api/invoices")
 async def list_invoices(
     include_ignored: bool = False,
-    user=Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_authenticated_user),
     db=Depends(get_db),
 ):
-    invoices = await get_invoices(db, user["nip"], include_ignored)
+    invoices = await get_invoices(db, user.nip, include_ignored)
     return [
         {
             "ksef_ref": inv["ksef_ref"],
@@ -117,10 +117,10 @@ async def list_invoices(
 async def upsert_invoice_endpoint(
     ksef_ref: str,
     req: InvoiceUpsert,
-    user=Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_authenticated_user),
     db=Depends(get_db),
 ):
-    inv = await upsert_invoice(db, user["nip"], ksef_ref, base64.b64decode(req.encrypted_blob))
+    inv = await upsert_invoice(db, user.nip, ksef_ref, base64.b64decode(req.encrypted_blob))
     return {
         "ksef_ref": inv["ksef_ref"],
         "ignored": bool(inv["ignored"]),
@@ -132,10 +132,10 @@ async def upsert_invoice_endpoint(
 async def patch_invoice(
     ksef_ref: str,
     req: InvoiceFlags,
-    user=Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_authenticated_user),
     db=Depends(get_db),
 ):
-    await update_invoice_flags(db, user["nip"], ksef_ref, req.ignored, req.paid)
+    await update_invoice_flags(db, user.nip, ksef_ref, req.ignored, req.paid)
     return {"ok": True}
 
 

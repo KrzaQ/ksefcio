@@ -1,7 +1,7 @@
 .PHONY: dev-backend dev-frontend build clean
 
 dev-backend:
-	cd backend && KSEFCIO_DEV=1 KSEFCIO_JWT_SECRET=dev-secret uv run fastapi dev src/ksefcio/main.py
+	cd backend && KSEFCIO_DEV=1 uv run fastapi dev src/ksefcio/main.py
 
 dev-frontend:
 	cd frontend && npm run dev

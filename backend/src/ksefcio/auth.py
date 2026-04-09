@@ -1,27 +1,18 @@
 import base64
 import hashlib
-import os
 import re
-import secrets
 import time
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-import jwt
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa, utils as asym_utils
+from fastapi import Depends, HTTPException, Request
 
-from ksefcio.db import get_db, get_user, upsert_user
+from ksefcio.db import get_db, upsert_user
 
-router = APIRouter(prefix="/api/auth")
-
-JWT_SECRET = os.environ.get("KSEFCIO_JWT_SECRET", "")
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_SECONDS = 24 * 60 * 60  # 24 hours
+TIMESTAMP_TOLERANCE = 300  # 5 minutes
 
 CERTS_DIR = Path(__file__).parent.parent.parent / "certs"
 
@@ -54,28 +45,6 @@ def _load_ca_certs():
 _load_ca_certs()
 
 
-# --- Pending challenges ---
-
-
-@dataclass
-class ChallengeData:
-    nonce: bytes
-    cert_fingerprint: str
-    nip: str
-    name: str
-    expires_at: float
-
-
-_pending_challenges: dict[str, ChallengeData] = {}
-
-
-def _cleanup_expired():
-    now = time.monotonic()
-    expired = [k for k, v in _pending_challenges.items() if v.expires_at < now]
-    for k in expired:
-        del _pending_challenges[k]
-
-
 # --- Cert helpers ---
 
 
@@ -102,8 +71,9 @@ def verify_cert_chain(user_cert: x509.Certificate):
             raise HTTPException(400, f"Certificate expired or not yet valid: {label}")
 
 
-def extract_nip(cert: x509.Certificate) -> str:
-    # Try organizationIdentifier (VATPL-XXXXXXXXXX) for organizations
+def extract_user_id(cert: x509.Certificate) -> str:
+    """Extract user identifier from certificate: NIP (10 digits) or PESEL (11 digits)."""
+    # Try organizationIdentifier (VATPL-XXXXXXXXXX) for organizations → NIP
     try:
         org_id = cert.subject.get_attributes_for_oid(OID_ORG_IDENTIFIER)
         if org_id:
@@ -113,17 +83,22 @@ def extract_nip(cert: x509.Certificate) -> str:
     except Exception:
         pass
 
-    # Try serialNumber (TINPL-XXXXXXXXXX) for natural persons
+    # Try serialNumber for natural persons
     try:
         serial = cert.subject.get_attributes_for_oid(x509.oid.NameOID.SERIAL_NUMBER)
         if serial:
+            # TINPL = NIP (10 digits)
             match = re.match(r"TINPL-(\d{10})", serial[0].value)
+            if match:
+                return match.group(1)
+            # PNOPL = PESEL (11 digits, JDG natural person certs)
+            match = re.match(r"PNOPL-(\d{11})", serial[0].value)
             if match:
                 return match.group(1)
     except Exception:
         pass
 
-    raise HTTPException(400, "Could not extract NIP from certificate")
+    raise HTTPException(400, "Could not extract NIP or PESEL from certificate")
 
 
 def extract_name(cert: x509.Certificate) -> str:
@@ -150,144 +125,79 @@ def cert_fingerprint(cert: x509.Certificate) -> str:
     return hashlib.sha256(cert.public_bytes(serialization.Encoding.DER)).hexdigest()
 
 
-def parse_cert(cert_pem: str) -> x509.Certificate:
+def parse_cert_der(cert_b64: str) -> x509.Certificate:
+    """Parse a base64-encoded DER certificate from the X-Cert header."""
     try:
-        cert_bytes = cert_pem.encode() if isinstance(cert_pem, str) else cert_pem
-        return x509.load_pem_x509_certificate(cert_bytes)
+        return x509.load_der_x509_certificate(base64.b64decode(cert_b64))
     except Exception:
-        try:
-            return x509.load_der_x509_certificate(base64.b64decode(cert_pem))
-        except Exception:
-            raise HTTPException(400, "Invalid certificate format")
+        raise HTTPException(400, "Invalid certificate in X-Cert header")
 
 
-# --- Endpoints ---
+# --- Signed request auth dependency ---
 
 
-class ChallengeRequest(BaseModel):
-    certificate: str  # PEM or base64-DER
-
-
-class ChallengeResponse(BaseModel):
-    challenge_id: str
-    nonce: str  # base64
+@dataclass
+class AuthenticatedUser:
     nip: str
     name: str
+    cert_fingerprint: str
 
 
-@router.post("/challenge", response_model=ChallengeResponse)
-async def create_challenge(req: ChallengeRequest):
-    cert = parse_cert(req.certificate)
+async def get_authenticated_user(request: Request, db=Depends(get_db)) -> AuthenticatedUser:
+    cert_b64 = request.headers.get("x-cert")
+    timestamp_str = request.headers.get("x-timestamp")
+    signature_b64 = request.headers.get("x-signature")
+
+    if not cert_b64 or not timestamp_str or not signature_b64:
+        raise HTTPException(401, "Missing auth headers (X-Cert, X-Timestamp, X-Signature)")
+
+    # Parse and verify certificate
+    cert = parse_cert_der(cert_b64)
     verify_cert_chain(cert)
-    nip = extract_nip(cert)
-    name = extract_name(cert)
 
-    _cleanup_expired()
+    # Check timestamp freshness
+    try:
+        timestamp = int(timestamp_str)
+    except ValueError:
+        raise HTTPException(400, "X-Timestamp must be an integer (unix seconds)")
 
-    nonce = secrets.token_bytes(32)
-    challenge_id = str(uuid.uuid4())
-    _pending_challenges[challenge_id] = ChallengeData(
-        nonce=nonce,
-        cert_fingerprint=cert_fingerprint(cert),
-        nip=nip,
-        name=name,
-        expires_at=time.monotonic() + 300,
-    )
+    now = int(time.time())
+    if abs(now - timestamp) > TIMESTAMP_TOLERANCE:
+        raise HTTPException(401, "Request timestamp too old or too far in the future")
 
-    return ChallengeResponse(
-        challenge_id=challenge_id,
-        nonce=base64.b64encode(nonce).decode(),
-        nip=nip,
-        name=name,
-    )
+    # Construct signed message: METHOD\nPATH\nTIMESTAMP
+    # Path includes query string to prevent query param tampering
+    path = request.url.path
+    if request.url.query:
+        path = f"{path}?{request.url.query}"
+    message = f"{request.method}\n{path}\n{timestamp_str}".encode()
 
-
-class VerifyRequest(BaseModel):
-    challenge_id: str
-    signature: str  # base64
-    certificate: str  # same cert as challenge
-
-
-class VerifyResponse(BaseModel):
-    token: str
-    user: dict
-
-
-@router.post("/verify", response_model=VerifyResponse)
-async def verify_challenge(req: VerifyRequest, db=Depends(get_db)):
-    challenge = _pending_challenges.get(req.challenge_id)
-    if not challenge or challenge.expires_at < time.monotonic():
-        _pending_challenges.pop(req.challenge_id, None)
-        raise HTTPException(401, "Challenge expired or not found")
-
-    cert = parse_cert(req.certificate)
-    if cert_fingerprint(cert) != challenge.cert_fingerprint:
-        raise HTTPException(400, "Certificate does not match challenge")
-
-    # Verify signature over the nonce
-    signature = base64.b64decode(req.signature)
+    # Verify signature
+    signature = base64.b64decode(signature_b64)
     public_key = cert.public_key()
 
     try:
         if isinstance(public_key, rsa.RSAPublicKey):
-            public_key.verify(signature, challenge.nonce, padding.PKCS1v15(), hashes.SHA256())
+            public_key.verify(signature, message, padding.PKCS1v15(), hashes.SHA256())
         elif isinstance(public_key, ec.EllipticCurvePublicKey):
-            public_key.verify(signature, challenge.nonce, ec.ECDSA(hashes.SHA256()))
+            # Web Crypto produces IEEE P1363 (r||s) signatures, convert to DER
+            key_byte_size = (public_key.key_size + 7) // 8
+            if len(signature) == 2 * key_byte_size:
+                r = int.from_bytes(signature[:key_byte_size], "big")
+                s = int.from_bytes(signature[key_byte_size:], "big")
+                signature = asym_utils.encode_dss_signature(r, s)
+            public_key.verify(signature, message, ec.ECDSA(hashes.SHA256()))
         else:
             raise HTTPException(400, "Unsupported key type")
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise
-        raise HTTPException(401, f"Signature verification failed: {e}")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(401, "Signature verification failed")
 
-    del _pending_challenges[req.challenge_id]
-
-    # Upsert user
+    # Extract identity and auto-upsert user
+    nip = extract_user_id(cert)
+    name = extract_name(cert)
     fp = cert_fingerprint(cert)
-    user = await upsert_user(db, challenge.nip, challenge.name, fp)
+    await upsert_user(db, nip, name, fp)
 
-    # Issue JWT
-    if not JWT_SECRET:
-        raise HTTPException(500, "JWT secret not configured")
-
-    token = jwt.encode(
-        {
-            "nip": challenge.nip,
-            "name": challenge.name,
-            "exp": int(time.time()) + JWT_EXPIRY_SECONDS,
-            "iat": int(time.time()),
-        },
-        JWT_SECRET,
-        algorithm=JWT_ALGORITHM,
-    )
-
-    return VerifyResponse(
-        token=token,
-        user={
-            "nip": user["nip"],
-            "name": user["name"],
-            "has_wrapped_key": user["wrapped_aes_key"] is not None,
-        },
-    )
-
-
-# --- Auth dependency ---
-
-
-async def get_current_user(request: Request) -> dict:
-    auth = request.headers.get("authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(401, "Missing authorization header")
-
-    token = auth[7:]
-    if not JWT_SECRET:
-        raise HTTPException(500, "JWT secret not configured")
-
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(401, "Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(401, "Invalid token")
-
-    return {"nip": payload["nip"], "name": payload["name"]}
+    return AuthenticatedUser(nip=nip, name=name, cert_fingerprint=fp)

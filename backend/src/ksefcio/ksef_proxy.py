@@ -3,7 +3,7 @@ import os
 import httpx
 from fastapi import APIRouter, Depends, Request, Response
 
-from ksefcio.auth import get_current_user
+from ksefcio.auth import get_authenticated_user
 
 router = APIRouter(prefix="/api/ksef")
 
@@ -30,7 +30,7 @@ FORWARDED_HEADERS = ("authorization", "content-type", "accept")
 
 
 @router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def ksef_proxy(path: str, request: Request, _user=Depends(get_current_user)):
+async def ksef_proxy(path: str, request: Request, _user=Depends(get_authenticated_user)):
     client = await get_ksef_client()
 
     headers = {}

@@ -1,14 +1,14 @@
 # ksefcio Implementation Roadmap
 
-## Phase 1: Login + Key Management
-Tightly coupled — first login generates the AES key.
+## Phase 1: Login + Key Management ✓
+Per-request signed auth — no JWTs, no sessions.
 
-1. Parse .key (encrypted private key) + .pem (certificate) in the browser
-2. Challenge-response auth against ksefcio backend (sign nonce with private key)
-3. On first login: generate random AES key, wrap with cert public key, upload to server
-4. On subsequent logins: download wrapped key, unwrap with private key
-5. Store entity (cert+key+AES key) in localStorage via entities store
-6. AES key export/import UI in Settings (for multi-device)
+1. ✓ Parse .key (encrypted private key) + .pem (certificate) in the browser
+2. ✓ Signed request auth — client signs METHOD\nPATH\nTIMESTAMP, server verifies against cert
+3. ✓ On first login: generate random AES key, wrap with cert public key, upload to server
+4. ✓ On subsequent logins: download wrapped key, unwrap with private key
+5. ✓ AES key persisted in IndexedDB as non-extractable CryptoKey; private key memory-only
+6. AES key export/import UI in Settings (for backup/multi-device)
 
 ## Phase 2: KSeF Sync
 Fetching invoices from KSeF through the proxy.
