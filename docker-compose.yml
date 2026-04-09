@@ -1,0 +1,14 @@
+services:
+  ksefcio:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ksefcio-data:/data
+    environment:
+      - KSEFCIO_JWT_SECRET=${KSEFCIO_JWT_SECRET:?Set KSEFCIO_JWT_SECRET}
+      - KSEF_API_URL=${KSEF_API_URL:-https://api-test.ksef.mf.gov.pl/v2}
+    restart: unless-stopped
+
+volumes:
+  ksefcio-data:
