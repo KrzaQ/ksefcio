@@ -1,0 +1,9 @@
+Makefile.local
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
+*.db
+*.sqlite
+.env
