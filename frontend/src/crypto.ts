@@ -446,3 +446,21 @@ export async function deleteAesKey(nip: string): Promise<void> {
     tx.onerror = () => { db.close(); reject(tx.error) }
   })
 }
+
+// --- AES-GCM blob encrypt/decrypt ---
+
+export async function encryptBlob(aesKey: CryptoKey, plaintext: ArrayBuffer): Promise<ArrayBuffer> {
+  const iv = window.crypto.getRandomValues(new Uint8Array(12))
+  const ciphertext = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, plaintext)
+  const result = new Uint8Array(12 + ciphertext.byteLength)
+  result.set(iv, 0)
+  result.set(new Uint8Array(ciphertext), 12)
+  return result.buffer as ArrayBuffer
+}
+
+export async function decryptBlob(aesKey: CryptoKey, encrypted: ArrayBuffer): Promise<ArrayBuffer> {
+  const data = new Uint8Array(encrypted)
+  const iv = data.slice(0, 12)
+  const ciphertext = data.slice(12)
+  return window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ciphertext)
+}
