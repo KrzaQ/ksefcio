@@ -33,7 +33,7 @@ function fmt(value: string): string {
 
 <template>
   <div>
-    <router-link to="/invoices" class="text-blue-600 text-sm hover:underline">&larr; Wróć do listy</router-link>
+    <router-link to="/invoices" class="text-amber-400 text-sm hover:underline">&larr; Wróć do listy</router-link>
 
     <div v-if="!invoice" class="mt-4 text-gray-500 text-sm">
       Faktura nie została znaleziona. Wróć do listy i spróbuj ponownie.
@@ -41,18 +41,18 @@ function fmt(value: string): string {
 
     <template v-else>
       <h1 class="text-xl font-semibold mt-2">{{ invoice.invoice_number }}</h1>
-      <p class="text-xs text-gray-400 mt-1">KSeF: {{ invoice.ksef_ref }}</p>
+      <p class="text-xs text-gray-500 mt-1">KSeF: {{ invoice.ksef_ref }}</p>
 
       <div class="grid grid-cols-2 gap-x-8 gap-y-3 mt-6 text-sm max-w-lg">
         <div>
           <div class="text-gray-500 text-xs">Sprzedawca</div>
           <div class="font-medium">{{ invoice.seller_name }}</div>
-          <div class="text-xs text-gray-400">NIP {{ invoice.seller_nip }}</div>
+          <div class="text-xs text-gray-500">NIP {{ invoice.seller_nip }}</div>
         </div>
         <div>
           <div class="text-gray-500 text-xs">Nabywca</div>
           <div class="font-medium">{{ invoice.buyer_name }}</div>
-          <div class="text-xs text-gray-400">NIP {{ invoice.buyer_nip }}</div>
+          <div class="text-xs text-gray-500">NIP {{ invoice.buyer_nip }}</div>
         </div>
 
         <div>
@@ -83,21 +83,21 @@ function fmt(value: string): string {
       </div>
 
       <div class="flex gap-4 mt-6 text-sm">
-        <span :class="invoice.paid ? 'text-green-600' : 'text-gray-400'">
+        <span :class="invoice.paid ? 'text-green-400' : 'text-gray-500'">
           {{ invoice.paid ? 'Opłacona' : 'Nieopłacona' }}
         </span>
-        <span v-if="invoice.ignored" class="text-gray-400">Ignorowana</span>
+        <span v-if="invoice.ignored" class="text-gray-500">Ignorowana</span>
       </div>
 
       <div class="mt-6">
         <button
           @click="redownload"
           :disabled="redownloading"
-          class="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="text-sm text-gray-500 hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {{ redownloading ? 'Pobieranie...' : 'Pobierz ponownie z KSeF' }}
         </button>
-        <p v-if="redownloadError" class="text-red-600 text-sm mt-1">{{ redownloadError }}</p>
+        <p v-if="redownloadError" class="text-red-400 text-sm mt-1">{{ redownloadError }}</p>
       </div>
     </template>
   </div>

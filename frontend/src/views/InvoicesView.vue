@@ -159,37 +159,37 @@ async function doSync(nip: string) {
           @click="selectNip(nip)"
           class="px-3 py-2 rounded text-sm font-mono border"
           :class="auth.activeNip === nip
-            ? 'border-blue-500 bg-blue-50 text-blue-700'
-            : 'border-gray-300 text-gray-600 hover:border-gray-400'"
+            ? 'border-amber-500 bg-amber-950/40 text-amber-400'
+            : 'border-gray-700 text-gray-400 hover:border-gray-600'"
         >
           {{ nip }}
         </button>
         <input
           v-model="nipInput"
           placeholder="NIP (10 cyfr)"
-          class="border border-gray-300 rounded px-3 py-2 text-sm w-36 font-mono"
+          class="bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm w-36 font-mono text-gray-200 focus:border-amber-500 focus:outline-none"
           maxlength="10"
           @keyup.enter="startSync"
         />
         <button
           @click="startSync"
           :disabled="syncing"
-          class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="bg-amber-600 text-white px-4 py-2 rounded text-sm hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {{ syncing ? 'Synchronizacja...' : 'Synchronizuj z KSeF' }}
         </button>
       </div>
     </div>
 
-    <div v-if="store.syncProgress" class="bg-blue-50 text-blue-700 text-sm px-3 py-2 rounded mb-4">
+    <div v-if="store.syncProgress" class="bg-amber-950/40 text-amber-400 text-sm px-3 py-2 rounded mb-4">
       {{ store.syncProgress }}
     </div>
 
-    <div v-if="syncError" class="bg-red-50 text-red-700 text-sm px-3 py-2 rounded mb-4">
+    <div v-if="syncError" class="bg-red-950/40 text-red-400 text-sm px-3 py-2 rounded mb-4">
       {{ syncError }}
     </div>
 
-    <div class="flex items-center gap-4 mb-4 text-sm">
+    <div class="flex items-center gap-4 mb-4 text-sm text-gray-400">
       <label class="flex items-center gap-1.5">
         <input type="checkbox" v-model="store.showPaid" />
         Pokaż opłacone
@@ -200,7 +200,7 @@ async function doSync(nip: string) {
       </label>
     </div>
 
-    <div v-if="store.decryptError" class="bg-red-50 text-red-700 text-sm px-3 py-2 rounded mb-4">
+    <div v-if="store.decryptError" class="bg-red-950/40 text-red-400 text-sm px-3 py-2 rounded mb-4">
       {{ store.decryptError }}
     </div>
 
@@ -218,7 +218,7 @@ async function doSync(nip: string) {
 
     <table v-else class="w-full text-sm">
       <thead>
-        <tr class="border-b border-gray-200 text-left text-gray-500">
+        <tr class="border-b border-gray-700 text-left text-gray-500">
           <th @click="toggleSort('issue_date')" class="py-2 px-2 cursor-pointer select-none">
             Data wystawienia{{ sortIndicator('issue_date') }}
           </th>
@@ -238,14 +238,14 @@ async function doSync(nip: string) {
         <template v-for="inv in filteredInvoices" :key="inv.ksef_ref">
           <tr
             @click="toggleExpand(inv)"
-            class="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-            :class="{ 'opacity-40': inv.ignored, 'text-gray-400': inv.paid }"
+            class="border-b border-gray-800 hover:bg-gray-900 cursor-pointer"
+            :class="{ 'opacity-40': inv.ignored, 'text-gray-600': inv.paid }"
           >
             <td class="py-2 px-2">{{ inv.issue_date }}</td>
             <td class="py-2 px-2 font-mono text-xs">{{ inv.invoice_number }}</td>
             <td class="py-2 px-2">
               <div>{{ inv.seller_name }}</div>
-              <div class="text-xs text-gray-400">{{ inv.seller_nip }}</div>
+              <div class="text-xs text-gray-500">{{ inv.seller_nip }}</div>
             </td>
             <td class="py-2 px-2 text-right font-mono">
               {{ formatAmount(inv.gross_amount) }} {{ inv.currency }}
@@ -260,12 +260,12 @@ async function doSync(nip: string) {
           </tr>
           <!-- Expanded detail row -->
           <tr v-if="expandedRef === inv.ksef_ref">
-            <td colspan="7" class="bg-gray-50 px-4 py-3">
+            <td colspan="7" class="bg-gray-900 px-4 py-3 border-b border-gray-800">
               <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-sm max-w-lg mb-3">
                 <div>
                   <span class="text-gray-500 text-xs">Nabywca</span>
                   <div>{{ inv.buyer_name }}</div>
-                  <div class="text-xs text-gray-400">NIP {{ inv.buyer_nip }}</div>
+                  <div class="text-xs text-gray-500">NIP {{ inv.buyer_nip }}</div>
                 </div>
                 <div>
                   <span class="text-gray-500 text-xs">Netto / VAT</span>
@@ -277,14 +277,14 @@ async function doSync(nip: string) {
                 </div>
                 <div>
                   <span class="text-gray-500 text-xs">KSeF</span>
-                  <div class="text-xs text-gray-400">{{ inv.ksef_ref }}</div>
+                  <div class="text-xs text-gray-500">{{ inv.ksef_ref }}</div>
                 </div>
               </div>
 
               <!-- Line items -->
               <table v-if="inv.line_items?.length" class="w-full text-xs mt-2 mb-3">
                 <thead>
-                  <tr class="border-b border-gray-200 text-gray-500">
+                  <tr class="border-b border-gray-700 text-gray-500">
                     <th class="py-1 px-2 text-left">Opis</th>
                     <th class="py-1 px-2 text-right">Ilość</th>
                     <th class="py-1 px-2 text-right">Cena jedn.</th>
@@ -293,7 +293,7 @@ async function doSync(nip: string) {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="(item, idx) in inv.line_items" :key="idx" class="border-b border-gray-100">
+                  <tr v-for="(item, idx) in inv.line_items" :key="idx" class="border-b border-gray-800">
                     <td class="py-1 px-2">{{ item.description }}</td>
                     <td class="py-1 px-2 text-right font-mono">{{ item.quantity ?? '' }} {{ item.unit ?? '' }}</td>
                     <td class="py-1 px-2 text-right font-mono">{{ item.unit_price ? formatAmount(item.unit_price) : '' }}</td>
@@ -307,11 +307,11 @@ async function doSync(nip: string) {
                 <button
                   @click="redownload(inv.ksef_ref)"
                   :disabled="redownloading"
-                  class="text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                  class="text-gray-500 hover:text-gray-300 disabled:opacity-50"
                 >
                   {{ redownloading ? 'Pobieranie...' : 'Pobierz ponownie z KSeF' }}
                 </button>
-                <span v-if="redownloadError" class="text-red-600">{{ redownloadError }}</span>
+                <span v-if="redownloadError" class="text-red-400">{{ redownloadError }}</span>
               </div>
             </td>
           </tr>

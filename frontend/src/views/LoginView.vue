@@ -162,18 +162,18 @@ async function login() {
 
 <template>
   <div class="max-w-md mx-auto mt-16">
-    <h1 class="text-2xl font-semibold mb-6">Logowanie — ksefcio</h1>
+    <h1 class="text-3xl mb-6 text-amber-400 tracking-wide" style="font-family: 'Cinzel Decorative', serif; font-weight: 700;">ksefcio</h1>
 
     <!-- Saved entities -->
     <div v-if="entities.entities.length > 0 && !showNewForm" class="space-y-4">
       <div class="space-y-2">
-        <label class="block text-sm font-medium text-gray-700">Podmiot</label>
+        <label class="block text-sm font-medium text-gray-400">Podmiot</label>
         <div
           v-for="entity in entities.entities"
           :key="entity.identity"
           @click="selectedIdentity = entity.identity"
           class="flex items-center gap-3 border rounded px-3 py-2 cursor-pointer"
-          :class="selectedIdentity === entity.identity ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'"
+          :class="selectedIdentity === entity.identity ? 'border-amber-500 bg-amber-950/40' : 'border-gray-700 hover:border-gray-600'"
         >
           <div class="flex-1">
             <div class="font-medium text-sm">{{ entity.name }}</div>
@@ -183,21 +183,21 @@ async function login() {
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Hasło klucza</label>
-        <input type="password" v-model="password" class="block w-full border border-gray-300 rounded px-3 py-2 text-sm" />
+        <label class="block text-sm font-medium text-gray-400 mb-1">Hasło klucza</label>
+        <input type="password" v-model="password" @keyup.enter="login" class="block w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:border-amber-500 focus:outline-none" />
       </div>
 
       <button
         @click="login"
         :disabled="loading"
-        class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+        class="w-full bg-amber-600 text-white py-2 rounded hover:bg-amber-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {{ loading ? 'Logowanie...' : 'Zaloguj' }}
       </button>
 
-      <p v-if="error" class="text-red-600 text-sm">{{ error }}</p>
+      <p v-if="error" class="text-red-400 text-sm">{{ error }}</p>
 
-      <button @click="showNewForm = true" class="w-full text-sm text-gray-500 hover:text-gray-700">
+      <button @click="showNewForm = true" class="w-full text-sm text-gray-500 hover:text-gray-300">
         + Dodaj nowy podmiot
       </button>
     </div>
@@ -205,31 +205,31 @@ async function login() {
     <!-- New entity form -->
     <form v-else @submit.prevent="login" class="space-y-4">
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Certyfikat (.pem)</label>
-        <input type="file" accept=".pem,.crt" @change="onCertChange" class="block w-full text-sm" />
+        <label class="block text-sm font-medium text-gray-400 mb-1">Certyfikat (.pem)</label>
+        <input type="file" accept=".pem,.crt" @change="onCertChange" class="block w-full text-sm text-gray-400" />
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Klucz prywatny (.key)</label>
-        <input type="file" accept=".key,.pem" @change="onKeyChange" class="block w-full text-sm" />
+        <label class="block text-sm font-medium text-gray-400 mb-1">Klucz prywatny (.key)</label>
+        <input type="file" accept=".key,.pem" @change="onKeyChange" class="block w-full text-sm text-gray-400" />
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Hasło klucza</label>
-        <input type="password" v-model="password" class="block w-full border border-gray-300 rounded px-3 py-2 text-sm" />
+        <label class="block text-sm font-medium text-gray-400 mb-1">Hasło klucza</label>
+        <input type="password" v-model="password" class="block w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:border-amber-500 focus:outline-none" />
       </div>
       <button
         type="submit"
         :disabled="loading"
-        class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+        class="w-full bg-amber-600 text-white py-2 rounded hover:bg-amber-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {{ loading ? 'Logowanie...' : 'Zaloguj' }}
       </button>
-      <p v-if="error" class="text-red-600 text-sm">{{ error }}</p>
+      <p v-if="error" class="text-red-400 text-sm">{{ error }}</p>
 
       <button
         v-if="entities.entities.length > 0"
         type="button"
         @click="showNewForm = false"
-        class="w-full text-sm text-gray-500 hover:text-gray-700"
+        class="w-full text-sm text-gray-500 hover:text-gray-300"
       >
         Wróć do listy podmiotów
       </button>
