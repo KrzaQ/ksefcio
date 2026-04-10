@@ -3,13 +3,11 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useInvoicesStore, type DecryptedInvoice } from '../stores/invoices'
 import { useAuthStore } from '../stores/auth'
-import { useEntitiesStore } from '../stores/entities'
 import { authenticateKsef } from '../ksef'
 
 const router = useRouter()
 const store = useInvoicesStore()
 const auth = useAuthStore()
-const entities = useEntitiesStore()
 
 type SortKey = 'issue_date' | 'seller_name' | 'gross_amount'
 const sortKey = ref<SortKey>('issue_date')
@@ -18,12 +16,25 @@ const sortAsc = ref(false)
 // KSeF sync state
 const syncing = ref(false)
 const syncError = ref('')
-const showNipPrompt = ref(false)
 const nipInput = ref('')
 
-onMounted(() => store.fetchInvoices())
+onMounted(() => {
+  // Pre-fill NIP input from activeNip or identity
+  if (auth.activeNip) {
+    nipInput.value = auth.activeNip
+  } else if (auth.identity && auth.identity.length === 10) {
+    nipInput.value = auth.identity
+  }
+  store.fetchInvoices()
+})
 
+watch(() => auth.activeNip, () => store.fetchInvoices())
 watch(() => store.showIgnored, () => store.fetchInvoices())
+
+function selectNip(nip: string) {
+  auth.activeNip = nip
+  nipInput.value = nip
+}
 
 const filteredInvoices = computed(() => {
   let list = store.decryptedInvoices
@@ -74,47 +85,13 @@ function goToDetail(inv: DecryptedInvoice) {
   router.push(`/invoices/${encodeURIComponent(inv.ksef_ref)}`)
 }
 
-/** Resolve the NIP to use for KSeF auth. */
-function resolveKsefNip(): string | null {
-  const entity = entities.getActive()
-
-  // Entity has a saved ksefNip
-  if (entity?.ksefNip) return entity.ksefNip
-
-  // Cert identity is NIP (10 digits)
-  if (auth.identity && auth.identity.length === 10) return auth.identity
-
-  // PESEL (11 digits) — need to ask user
-  return null
-}
-
 async function startSync() {
   syncError.value = ''
-
-  const nip = resolveKsefNip()
-  if (!nip) {
-    showNipPrompt.value = true
-    return
-  }
-
-  await doSync(nip)
-}
-
-async function submitNip() {
   const nip = nipInput.value.replace(/\s/g, '')
   if (!/^\d{10}$/.test(nip)) {
     syncError.value = 'NIP musi mieć 10 cyfr'
     return
   }
-
-  // Save for next time
-  const entity = entities.getActive()
-  if (entity) {
-    entity.ksefNip = nip
-    entities.addEntity(entity)
-  }
-
-  showNipPrompt.value = false
   await doSync(nip)
 }
 
@@ -124,6 +101,10 @@ async function doSync(nip: string) {
   try {
     const tokens = await authenticateKsef(nip)
     auth.ksefAccessToken = tokens.accessToken
+    auth.activeNip = nip
+    if (!auth.knownNips.includes(nip)) {
+      auth.knownNips.push(nip)
+    }
     console.log('[sync] KSeF auth success')
     // TODO Phase 2.2: fetch invoices from KSeF using the token
   } catch (e) {
@@ -139,39 +120,32 @@ async function doSync(nip: string) {
   <div>
     <div class="flex items-center justify-between mb-4">
       <h1 class="text-xl font-semibold">Faktury</h1>
-      <button
-        @click="startSync"
-        :disabled="syncing"
-        class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {{ syncing ? 'Synchronizacja...' : 'Synchronizuj z KSeF' }}
-      </button>
-    </div>
-
-    <!-- NIP prompt for PESEL certs -->
-    <div v-if="showNipPrompt" class="bg-gray-50 border border-gray-200 rounded p-4 mb-4">
-      <p class="text-sm text-gray-700 mb-2">
-        Twój certyfikat zawiera PESEL. Podaj NIP firmy do autoryzacji w KSeF:
-      </p>
-      <div class="flex gap-2">
+      <div class="flex items-center gap-2">
+        <!-- NIP selector: known NIPs as buttons + manual input -->
+        <button
+          v-for="nip in auth.knownNips"
+          :key="nip"
+          @click="selectNip(nip)"
+          class="px-3 py-2 rounded text-sm font-mono border"
+          :class="auth.activeNip === nip
+            ? 'border-blue-500 bg-blue-50 text-blue-700'
+            : 'border-gray-300 text-gray-600 hover:border-gray-400'"
+        >
+          {{ nip }}
+        </button>
         <input
           v-model="nipInput"
           placeholder="NIP (10 cyfr)"
-          class="border border-gray-300 rounded px-3 py-1.5 text-sm flex-1"
+          class="border border-gray-300 rounded px-3 py-2 text-sm w-36 font-mono"
           maxlength="10"
-          @keyup.enter="submitNip"
+          @keyup.enter="startSync"
         />
         <button
-          @click="submitNip"
-          class="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700"
+          @click="startSync"
+          :disabled="syncing"
+          class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          OK
-        </button>
-        <button
-          @click="showNipPrompt = false"
-          class="text-gray-500 px-2 text-sm hover:text-gray-700"
-        >
-          Anuluj
+          {{ syncing ? 'Synchronizacja...' : 'Synchronizuj z KSeF' }}
         </button>
       </div>
     </div>
@@ -195,7 +169,11 @@ async function doSync(nip: string) {
       {{ store.decryptError }}
     </div>
 
-    <div v-if="store.loading" class="text-gray-500 text-sm">
+    <div v-if="!auth.activeNip" class="text-gray-500 text-sm">
+      Wybierz NIP lub zsynchronizuj dane z KSeF, aby zobaczyć faktury.
+    </div>
+
+    <div v-else-if="store.loading" class="text-gray-500 text-sm">
       Wczytywanie faktur...
     </div>
 

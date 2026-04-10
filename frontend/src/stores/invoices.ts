@@ -81,12 +81,19 @@ export const useInvoicesStore = defineStore('invoices', () => {
   }
 
   async function fetchInvoices() {
+    const auth = useAuthStore()
+    if (!auth.activeNip) {
+      invoices.value = []
+      decryptedInvoices.value = []
+      return
+    }
     loading.value = true
     try {
       const params = new URLSearchParams()
       if (showIgnored.value) params.set('include_ignored', 'true')
       const qs = params.toString()
-      const res = await apiFetch(qs ? `/api/invoices?${qs}` : '/api/invoices')
+      const base = `/api/invoices/${auth.activeNip}`
+      const res = await apiFetch(qs ? `${base}?${qs}` : base)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       invoices.value = await res.json()
       await decryptAll()
@@ -105,7 +112,8 @@ export const useInvoicesStore = defineStore('invoices', () => {
     }
 
     try {
-      const res = await apiFetch(`/api/invoices/${encodeURIComponent(ksefRef)}`, {
+      const auth = useAuthStore()
+      const res = await apiFetch(`/api/invoices/${auth.activeNip}/${encodeURIComponent(ksefRef)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(flags),

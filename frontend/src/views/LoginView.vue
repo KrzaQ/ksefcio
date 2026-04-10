@@ -98,56 +98,56 @@ async function login() {
     const userId = certNip ?? pesel!
     console.log('[login] Identity:', certNip ? `NIP ${certNip}` : `PESEL ${pesel}`, name)
 
-    // 3. Load or setup AES key
+    // 3. Fetch user info from server
+    const res = await signedFetch('/api/users/me', signingKey, derBytes)
+    console.log('[login] GET /api/users/me:', res.status)
+    const userData = res.ok ? await res.json() : null
+
+    // 4. Load or setup AES key
     let aesKey = await loadAesKey(userId)
     console.log('[login] AES key from IndexedDB:', aesKey ? 'found' : 'not found')
 
-    if (!aesKey) {
-      const res = await signedFetch('/api/users/me', signingKey, derBytes)
-      console.log('[login] GET /api/users/me:', res.status)
-
-      if (res.ok) {
-        const data = await res.json()
-        if (data.wrapped_aes_key) {
-          console.log('[login] Unwrapping AES key from server...')
-          const wrappedBytes = base64ToArrayBuffer(data.wrapped_aes_key)
-          aesKey = await unwrapAesKey(wrappedBytes, unwrapKey, publicKey)
-          await storeAesKey(userId, aesKey)
-          console.log('[login] AES key unwrapped and stored')
-        }
-      }
-
-      if (!aesKey) {
-        console.log('[login] Generating new AES key...')
-        const extractableKey = await generateAesKey()
-        const wrappedBytes = await wrapAesKey(extractableKey, publicKey, unwrapKey)
-
-        const uploadRes = await signedFetch('/api/users/me/wrapped-key', signingKey, derBytes, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            wrapped_aes_key: arrayBufferToBase64(wrappedBytes),
-          }),
-        })
-        if (!uploadRes.ok) {
-          const body = await uploadRes.text()
-          throw new Error(`Nie udało się zapisać klucza: HTTP ${uploadRes.status} — ${body}`)
-        }
-
-        aesKey = await makeNonExtractable(extractableKey)
-        await storeAesKey(userId, aesKey)
-        console.log('[login] AES key generated and stored')
-      }
+    if (!aesKey && userData?.wrapped_aes_key) {
+      console.log('[login] Unwrapping AES key from server...')
+      const wrappedBytes = base64ToArrayBuffer(userData.wrapped_aes_key)
+      aesKey = await unwrapAesKey(wrappedBytes, unwrapKey, publicKey)
+      await storeAesKey(userId, aesKey)
+      console.log('[login] AES key unwrapped and stored')
     }
 
-    // 4. Save entity to localStorage (cert + encrypted key)
+    if (!aesKey) {
+      console.log('[login] Generating new AES key...')
+      const extractableKey = await generateAesKey()
+      const wrappedBytes = await wrapAesKey(extractableKey, publicKey, unwrapKey)
+
+      const uploadRes = await signedFetch('/api/users/me/wrapped-key', signingKey, derBytes, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wrapped_aes_key: arrayBufferToBase64(wrappedBytes),
+        }),
+      })
+      if (!uploadRes.ok) {
+        const body = await uploadRes.text()
+        throw new Error(`Nie udało się zapisać klucza: HTTP ${uploadRes.status} — ${body}`)
+      }
+
+      aesKey = await makeNonExtractable(extractableKey)
+      await storeAesKey(userId, aesKey)
+      console.log('[login] AES key generated and stored')
+    }
+
+    // 5. Save entity to localStorage (cert + encrypted key)
     entities.addEntity({ identity: userId, name, certPem, keyPem })
 
-    // 5. Set session state
+    // 6. Set session state
     auth.login(signingKey, unwrapKey, derBytes, userId, name, aesKey)
-    console.log('[login] Session established for', userId)
+    const nips: string[] = userData?.nips ?? []
+    auth.knownNips = nips
+    auth.activeNip = nips[0] ?? null
+    console.log('[login] Session established for', userId, 'nips:', nips)
 
-    // 6. Navigate
+    // 7. Navigate
     router.push('/invoices')
   } catch (e) {
     console.error('[login] Error:', e)

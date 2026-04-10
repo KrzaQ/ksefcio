@@ -88,11 +88,13 @@ users
   ...
 
 invoices
-  identity        -- FK to users
+  identity        -- FK to users (access control)
+  nip             -- business NIP this invoice belongs to (scoping)
   ksef_ref        -- KSeF reference number
   ignored         -- bool, user marked as ignored
   paid            -- bool, user marked as paid
   encrypted_blob  -- encrypted invoice XML + metadata
+  UNIQUE(nip, ksef_ref)
 ```
 
 ## KSeF CA chain

@@ -1,5 +1,6 @@
 import base64
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from ksefcio.db import (
     get_db,
     get_invoices,
     get_user,
+    get_user_nips,
     init_db,
     update_invoice_flags,
     update_wrapped_key,
@@ -57,6 +59,7 @@ async def get_me(user: AuthenticatedUser = Depends(get_authenticated_user), db=D
     db_user = await get_user(db, user.identity)
     if not db_user:
         raise HTTPException(404, "User not found")
+    nips = await get_user_nips(db, user.identity)
     return {
         "identity": db_user["identity"],
         "name": db_user["name"],
@@ -67,6 +70,7 @@ async def get_me(user: AuthenticatedUser = Depends(get_authenticated_user), db=D
             else None
         ),
         "cert_fingerprint": db_user["cert_fingerprint"],
+        "nips": nips,
     }
 
 
@@ -94,13 +98,24 @@ class InvoiceFlags(BaseModel):
     paid: bool | None = None
 
 
-@app.get("/api/invoices")
+NIP_PATTERN = re.compile(r"^\d{10}$")
+
+
+def validate_nip(nip: str) -> str:
+    if not NIP_PATTERN.match(nip):
+        raise HTTPException(400, "NIP must be exactly 10 digits")
+    return nip
+
+
+@app.get("/api/invoices/{nip}")
 async def list_invoices(
+    nip: str,
     include_ignored: bool = False,
     user: AuthenticatedUser = Depends(get_authenticated_user),
     db=Depends(get_db),
 ):
-    invoices = await get_invoices(db, user.identity, include_ignored)
+    validate_nip(nip)
+    invoices = await get_invoices(db, user.identity, nip, include_ignored)
     return [
         {
             "ksef_ref": inv["ksef_ref"],
@@ -114,14 +129,16 @@ async def list_invoices(
     ]
 
 
-@app.put("/api/invoices/{ksef_ref}")
+@app.put("/api/invoices/{nip}/{ksef_ref:path}")
 async def upsert_invoice_endpoint(
+    nip: str,
     ksef_ref: str,
     req: InvoiceUpsert,
     user: AuthenticatedUser = Depends(get_authenticated_user),
     db=Depends(get_db),
 ):
-    inv = await upsert_invoice(db, user.identity, ksef_ref, base64.b64decode(req.encrypted_blob))
+    validate_nip(nip)
+    inv = await upsert_invoice(db, user.identity, nip, ksef_ref, base64.b64decode(req.encrypted_blob))
     return {
         "ksef_ref": inv["ksef_ref"],
         "ignored": bool(inv["ignored"]),
@@ -129,14 +146,16 @@ async def upsert_invoice_endpoint(
     }
 
 
-@app.patch("/api/invoices/{ksef_ref}")
+@app.patch("/api/invoices/{nip}/{ksef_ref:path}")
 async def patch_invoice(
+    nip: str,
     ksef_ref: str,
     req: InvoiceFlags,
     user: AuthenticatedUser = Depends(get_authenticated_user),
     db=Depends(get_db),
 ):
-    await update_invoice_flags(db, user.identity, ksef_ref, req.ignored, req.paid)
+    validate_nip(nip)
+    await update_invoice_flags(db, user.identity, nip, ksef_ref, req.ignored, req.paid)
     return {"ok": True}
 
 

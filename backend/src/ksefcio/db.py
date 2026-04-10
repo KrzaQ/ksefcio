@@ -18,14 +18,17 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS invoices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     identity TEXT NOT NULL REFERENCES users(identity),
+    nip TEXT NOT NULL,
     ksef_ref TEXT NOT NULL,
     ignored INTEGER NOT NULL DEFAULT 0,
     paid INTEGER NOT NULL DEFAULT 0,
     encrypted_blob BLOB NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(identity, ksef_ref)
+    UNIQUE(nip, ksef_ref)
 );
+
+CREATE INDEX IF NOT EXISTS idx_invoices_identity_nip ON invoices(identity, nip);
 """
 
 
@@ -83,36 +86,45 @@ async def update_wrapped_key(
 # --- Invoices ---
 
 
+async def get_user_nips(db: aiosqlite.Connection, identity: str) -> list[str]:
+    cursor = await db.execute(
+        "SELECT DISTINCT nip FROM invoices WHERE identity = ? ORDER BY nip", (identity,)
+    )
+    rows = await cursor.fetchall()
+    return [row["nip"] for row in rows]
+
+
 async def get_invoices(
-    db: aiosqlite.Connection, identity: str, include_ignored: bool = False
+    db: aiosqlite.Connection, identity: str, nip: str, include_ignored: bool = False
 ) -> list[dict]:
     if include_ignored:
         cursor = await db.execute(
-            "SELECT * FROM invoices WHERE identity = ? ORDER BY created_at DESC", (identity,)
+            "SELECT * FROM invoices WHERE identity = ? AND nip = ? ORDER BY created_at DESC",
+            (identity, nip),
         )
     else:
         cursor = await db.execute(
-            "SELECT * FROM invoices WHERE identity = ? AND ignored = 0 ORDER BY created_at DESC",
-            (identity,),
+            "SELECT * FROM invoices WHERE identity = ? AND nip = ? AND ignored = 0 ORDER BY created_at DESC",
+            (identity, nip),
         )
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]
 
 
 async def upsert_invoice(
-    db: aiosqlite.Connection, identity: str, ksef_ref: str, encrypted_blob: bytes
+    db: aiosqlite.Connection, identity: str, nip: str, ksef_ref: str, encrypted_blob: bytes
 ) -> dict:
     await db.execute(
-        """INSERT INTO invoices (identity, ksef_ref, encrypted_blob)
-           VALUES (?, ?, ?)
-           ON CONFLICT(identity, ksef_ref) DO UPDATE SET
+        """INSERT INTO invoices (identity, nip, ksef_ref, encrypted_blob)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(nip, ksef_ref) DO UPDATE SET
              encrypted_blob = excluded.encrypted_blob,
              updated_at = datetime('now')""",
-        (identity, ksef_ref, encrypted_blob),
+        (identity, nip, ksef_ref, encrypted_blob),
     )
     await db.commit()
     cursor = await db.execute(
-        "SELECT * FROM invoices WHERE identity = ? AND ksef_ref = ?", (identity, ksef_ref)
+        "SELECT * FROM invoices WHERE nip = ? AND ksef_ref = ?", (nip, ksef_ref)
     )
     row = await cursor.fetchone()
     return dict(row)
@@ -121,6 +133,7 @@ async def upsert_invoice(
 async def update_invoice_flags(
     db: aiosqlite.Connection,
     identity: str,
+    nip: str,
     ksef_ref: str,
     ignored: bool | None = None,
     paid: bool | None = None,
@@ -136,9 +149,9 @@ async def update_invoice_flags(
     if not updates:
         return
     updates.append("updated_at = datetime('now')")
-    params.extend([identity, ksef_ref])
+    params.extend([identity, nip, ksef_ref])
     await db.execute(
-        f"UPDATE invoices SET {', '.join(updates)} WHERE identity = ? AND ksef_ref = ?",
+        f"UPDATE invoices SET {', '.join(updates)} WHERE identity = ? AND nip = ? AND ksef_ref = ?",
         params,
     )
     await db.commit()
