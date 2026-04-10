@@ -1,4 +1,4 @@
-import type { InvoiceData } from './stores/invoices'
+import type { InvoiceData, LineItem } from './stores/invoices'
 
 /** Parse FA(2) or FA(3) invoice XML into InvoiceData. */
 export function parseInvoiceXml(xml: string, ksefRef: string): InvoiceData {
@@ -103,6 +103,22 @@ export function parseInvoiceXml(xml: string, ksefRef: string): InvoiceData {
     bankAccount = text(platnosc, 'NrRB') || undefined
   }
 
+  // Line items (FaWiersz)
+  const lineItems: LineItem[] = []
+  if (fa) {
+    const rows = fa.getElementsByTagNameNS('*', 'FaWiersz')
+    for (const row of rows) {
+      lineItems.push({
+        description: childText(row as Element, 'P_7'),
+        unit: childText(row as Element, 'P_8A') || undefined,
+        quantity: childText(row as Element, 'P_8B') || undefined,
+        unit_price: childText(row as Element, 'P_9A') || childText(row as Element, 'P_9B') || undefined,
+        net_amount: childText(row as Element, 'P_11') || childText(row as Element, 'P_11A') || '0',
+        vat_rate: childText(row as Element, 'P_12') || undefined,
+      })
+    }
+  }
+
   const grossAmount = grossAmountRaw || (netTotal + vatTotal).toFixed(2)
 
   return {
@@ -119,5 +135,6 @@ export function parseInvoiceXml(xml: string, ksefRef: string): InvoiceData {
     currency,
     due_date: dueDate,
     bank_account: bankAccount,
+    line_items: lineItems.length > 0 ? lineItems : undefined,
   }
 }

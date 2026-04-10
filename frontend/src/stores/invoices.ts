@@ -15,6 +15,15 @@ export interface Invoice {
   updated_at: string
 }
 
+export interface LineItem {
+  description: string
+  unit?: string
+  quantity?: string
+  unit_price?: string
+  net_amount: string
+  vat_rate?: string
+}
+
 export interface InvoiceData {
   ksef_ref: string
   invoice_number: string
@@ -29,6 +38,7 @@ export interface InvoiceData {
   currency: string
   due_date?: string
   bank_account?: string
+  line_items?: LineItem[]
   xml?: string  // full FA XML from KSeF
 }
 
@@ -240,9 +250,28 @@ export const useInvoicesStore = defineStore('invoices', () => {
     await fetchInvoices()
   }
 
+  /** Parse line items on demand from stored XML. Mutates the decrypted invoice in place. */
+  async function ensureLineItems(ksefRef: string) {
+    const dec = decryptedInvoices.value.find(i => i.ksef_ref === ksefRef)
+    if (!dec || dec.line_items) return
+
+    const auth = useAuthStore()
+    if (!auth.aesKey) return
+
+    const inv = invoices.value.find(i => i.ksef_ref === ksefRef)
+    if (!inv) return
+
+    const encrypted = base64ToArrayBuffer(inv.encrypted_blob)
+    const stored: InvoiceData = JSON.parse(new TextDecoder().decode(await decryptBlob(auth.aesKey, encrypted)))
+    if (!stored.xml) return
+
+    const parsed = parseInvoiceXml(stored.xml, ksefRef)
+    dec.line_items = parsed.line_items
+  }
+
   return {
     invoices, decryptedInvoices, decryptError,
     showIgnored, showPaid, loading, syncProgress,
-    fetchInvoices, updateFlags, syncFromKsef, redownloadInvoice,
+    fetchInvoices, updateFlags, syncFromKsef, redownloadInvoice, ensureLineItems,
   }
 })

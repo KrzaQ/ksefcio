@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { useInvoicesStore, type DecryptedInvoice } from '../stores/invoices'
 import { useAuthStore } from '../stores/auth'
 import { useEntitiesStore } from '../stores/entities'
 import { authenticateKsef } from '../ksef'
 
-const router = useRouter()
 const store = useInvoicesStore()
 const auth = useAuthStore()
 const entities = useEntitiesStore()
@@ -83,8 +81,32 @@ async function toggleIgnored(inv: DecryptedInvoice) {
   await store.updateFlags(inv.ksef_ref, { ignored: !inv.ignored })
 }
 
-function goToDetail(inv: DecryptedInvoice) {
-  router.push(`/invoices/${encodeURIComponent(inv.ksef_ref)}`)
+// Inline detail expansion
+const expandedRef = ref<string | null>(null)
+
+function toggleExpand(inv: DecryptedInvoice) {
+  if (expandedRef.value === inv.ksef_ref) {
+    expandedRef.value = null
+  } else {
+    expandedRef.value = inv.ksef_ref
+    store.ensureLineItems(inv.ksef_ref)
+  }
+}
+
+// Redownload
+const redownloading = ref(false)
+const redownloadError = ref('')
+
+async function redownload(ksefRef: string) {
+  redownloading.value = true
+  redownloadError.value = ''
+  try {
+    await store.redownloadInvoice(ksefRef)
+  } catch (e) {
+    redownloadError.value = e instanceof Error ? e.message : 'Nieznany błąd'
+  } finally {
+    redownloading.value = false
+  }
 }
 
 async function startSync() {
@@ -213,30 +235,87 @@ async function doSync(nip: string) {
         </tr>
       </thead>
       <tbody>
-        <tr
-          v-for="inv in filteredInvoices"
-          :key="inv.ksef_ref"
-          @click="goToDetail(inv)"
-          class="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-          :class="{ 'opacity-50': inv.ignored }"
-        >
-          <td class="py-2 px-2">{{ inv.issue_date }}</td>
-          <td class="py-2 px-2 font-mono text-xs">{{ inv.invoice_number }}</td>
-          <td class="py-2 px-2">
-            <div>{{ inv.seller_name }}</div>
-            <div class="text-xs text-gray-400">{{ inv.seller_nip }}</div>
-          </td>
-          <td class="py-2 px-2 text-right font-mono">
-            {{ formatAmount(inv.gross_amount) }} {{ inv.currency }}
-          </td>
-          <td class="py-2 px-2">{{ inv.due_date ?? '\u2014' }}</td>
-          <td class="py-2 px-2 text-center" @click.stop>
-            <input type="checkbox" :checked="inv.paid" @change="togglePaid(inv)" />
-          </td>
-          <td class="py-2 px-2 text-center" @click.stop>
-            <input type="checkbox" :checked="inv.ignored" @change="toggleIgnored(inv)" />
-          </td>
-        </tr>
+        <template v-for="inv in filteredInvoices" :key="inv.ksef_ref">
+          <tr
+            @click="toggleExpand(inv)"
+            class="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+            :class="{ 'opacity-40': inv.ignored, 'text-gray-400': inv.paid }"
+          >
+            <td class="py-2 px-2">{{ inv.issue_date }}</td>
+            <td class="py-2 px-2 font-mono text-xs">{{ inv.invoice_number }}</td>
+            <td class="py-2 px-2">
+              <div>{{ inv.seller_name }}</div>
+              <div class="text-xs text-gray-400">{{ inv.seller_nip }}</div>
+            </td>
+            <td class="py-2 px-2 text-right font-mono">
+              {{ formatAmount(inv.gross_amount) }} {{ inv.currency }}
+            </td>
+            <td class="py-2 px-2">{{ inv.due_date ?? '\u2014' }}</td>
+            <td class="py-2 px-2 text-center" @click.stop>
+              <input type="checkbox" :checked="inv.paid" @change="togglePaid(inv)" />
+            </td>
+            <td class="py-2 px-2 text-center" @click.stop>
+              <input type="checkbox" :checked="inv.ignored" @change="toggleIgnored(inv)" />
+            </td>
+          </tr>
+          <!-- Expanded detail row -->
+          <tr v-if="expandedRef === inv.ksef_ref">
+            <td colspan="7" class="bg-gray-50 px-4 py-3">
+              <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-sm max-w-lg mb-3">
+                <div>
+                  <span class="text-gray-500 text-xs">Nabywca</span>
+                  <div>{{ inv.buyer_name }}</div>
+                  <div class="text-xs text-gray-400">NIP {{ inv.buyer_nip }}</div>
+                </div>
+                <div>
+                  <span class="text-gray-500 text-xs">Netto / VAT</span>
+                  <div>{{ formatAmount(inv.net_amount) }} + {{ formatAmount(inv.vat_amount) }} {{ inv.currency }}</div>
+                </div>
+                <div v-if="inv.bank_account">
+                  <span class="text-gray-500 text-xs">Konto bankowe</span>
+                  <div class="font-mono text-xs">{{ inv.bank_account }}</div>
+                </div>
+                <div>
+                  <span class="text-gray-500 text-xs">KSeF</span>
+                  <div class="text-xs text-gray-400">{{ inv.ksef_ref }}</div>
+                </div>
+              </div>
+
+              <!-- Line items -->
+              <table v-if="inv.line_items?.length" class="w-full text-xs mt-2 mb-3">
+                <thead>
+                  <tr class="border-b border-gray-200 text-gray-500">
+                    <th class="py-1 px-2 text-left">Opis</th>
+                    <th class="py-1 px-2 text-right">Ilość</th>
+                    <th class="py-1 px-2 text-right">Cena jedn.</th>
+                    <th class="py-1 px-2 text-right">Netto</th>
+                    <th class="py-1 px-2 text-right">VAT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(item, idx) in inv.line_items" :key="idx" class="border-b border-gray-100">
+                    <td class="py-1 px-2">{{ item.description }}</td>
+                    <td class="py-1 px-2 text-right font-mono">{{ item.quantity ?? '' }} {{ item.unit ?? '' }}</td>
+                    <td class="py-1 px-2 text-right font-mono">{{ item.unit_price ? formatAmount(item.unit_price) : '' }}</td>
+                    <td class="py-1 px-2 text-right font-mono">{{ formatAmount(item.net_amount) }}</td>
+                    <td class="py-1 px-2 text-right">{{ item.vat_rate ?? '' }}{{ item.vat_rate && !isNaN(Number(item.vat_rate)) ? '%' : '' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="flex items-center gap-4 text-xs" @click.stop>
+                <button
+                  @click="redownload(inv.ksef_ref)"
+                  :disabled="redownloading"
+                  class="text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                >
+                  {{ redownloading ? 'Pobieranie...' : 'Pobierz ponownie z KSeF' }}
+                </button>
+                <span v-if="redownloadError" class="text-red-600">{{ redownloadError }}</span>
+              </div>
+            </td>
+          </tr>
+        </template>
       </tbody>
     </table>
   </div>
