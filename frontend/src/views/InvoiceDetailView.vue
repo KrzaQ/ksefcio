@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useInvoicesStore } from '../stores/invoices'
 
 const props = defineProps<{ id: string }>()
@@ -8,6 +8,21 @@ const store = useInvoicesStore()
 const invoice = computed(() =>
   store.decryptedInvoices.find(i => i.ksef_ref === props.id),
 )
+
+const redownloading = ref(false)
+const redownloadError = ref('')
+
+async function redownload() {
+  redownloading.value = true
+  redownloadError.value = ''
+  try {
+    await store.redownloadInvoice(props.id)
+  } catch (e) {
+    redownloadError.value = e instanceof Error ? e.message : 'Nieznany błąd'
+  } finally {
+    redownloading.value = false
+  }
+}
 
 const amountFmt = new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 function fmt(value: string): string {
@@ -72,6 +87,17 @@ function fmt(value: string): string {
           {{ invoice.paid ? 'Opłacona' : 'Nieopłacona' }}
         </span>
         <span v-if="invoice.ignored" class="text-gray-400">Ignorowana</span>
+      </div>
+
+      <div class="mt-6">
+        <button
+          @click="redownload"
+          :disabled="redownloading"
+          class="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {{ redownloading ? 'Pobieranie...' : 'Pobierz ponownie z KSeF' }}
+        </button>
+        <p v-if="redownloadError" class="text-red-600 text-sm mt-1">{{ redownloadError }}</p>
       </div>
     </template>
   </div>

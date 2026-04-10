@@ -18,6 +18,17 @@ export function parseInvoiceXml(xml: string, ksefRef: string): InvoiceData {
     return find(parent, tagName)?.textContent?.trim() ?? ''
   }
 
+  /** Get text of a direct child element only (no deep search). */
+  function childText(parent: Element, tagName: string): string {
+    for (const child of parent.children) {
+      if (child.localName === tagName) return child.textContent?.trim() ?? ''
+    }
+    return ''
+  }
+
+  // Detect FA variant: 2 or 3 (field mapping differs)
+  const variant = parseInt(text(doc, 'WariantFormularza')) || 2
+
   // Seller (Podmiot1)
   const podmiot1 = find(doc, 'Podmiot1')
   let sellerNip = ''
@@ -38,22 +49,40 @@ export function parseInvoiceXml(xml: string, ksefRef: string): InvoiceData {
       || `${text(podmiot2, 'ImiePierwsze')} ${text(podmiot2, 'Nazwisko')}`.trim()
   }
 
-  // Invoice header (Fa)
+  // Invoice header (Fa) — use childText to avoid hitting FaWiersz fields
   const fa = find(doc, 'Fa')
-  const invoiceNumber = fa ? text(fa, 'P_1') : ''
-  const issueDate = fa ? text(fa, 'P_2') : ''
-  const currency = fa ? (text(fa, 'KodWaluty') || 'PLN') : 'PLN'
-  const grossAmountRaw = fa ? text(fa, 'P_15') : ''
+  let invoiceNumber: string
+  let issueDate: string
+  if (variant >= 3) {
+    // FA(3): P_1 = issue date, P_2 = invoice number
+    issueDate = fa ? childText(fa, 'P_1') : ''
+    invoiceNumber = fa ? childText(fa, 'P_2') : ''
+  } else {
+    // FA(2): P_1 = invoice number, P_2 = issue date
+    invoiceNumber = fa ? childText(fa, 'P_1') : ''
+    issueDate = fa ? childText(fa, 'P_2') : ''
+  }
+  const currency = fa ? childText(fa, 'KodWaluty') || 'PLN' : 'PLN'
+  const grossAmountRaw = fa ? childText(fa, 'P_15') : ''
 
-  // Net and VAT totals — sum P_13_* and P_14_* across all VAT rates (1..11)
+  // Net and VAT totals — sum P_13_* and P_14_* across all VAT rates
   let netTotal = 0
   let vatTotal = 0
   if (fa) {
-    for (let i = 1; i <= 11; i++) {
-      const net = parseFloat(text(fa, `P_13_${i}`))
-      const vat = parseFloat(text(fa, `P_14_${i}`))
-      if (!isNaN(net)) netTotal += net
-      if (!isNaN(vat)) vatTotal += vat
+    // FA(3) uses P_13_6_1..P_13_6_3 + P_13_7..P_13_11; FA(2) uses P_13_1..P_13_11
+    const netFields = ['P_13_1', 'P_13_2', 'P_13_3', 'P_13_4', 'P_13_5',
+      'P_13_6', 'P_13_6_1', 'P_13_6_2', 'P_13_6_3',
+      'P_13_7', 'P_13_8', 'P_13_9', 'P_13_10', 'P_13_11']
+    const vatFields = ['P_14_1', 'P_14_2', 'P_14_3', 'P_14_4', 'P_14_5',
+      'P_14_6', 'P_14_6_1', 'P_14_6_2', 'P_14_6_3',
+      'P_14_7', 'P_14_8', 'P_14_9', 'P_14_10', 'P_14_11']
+    for (const f of netFields) {
+      const v = parseFloat(childText(fa, f))
+      if (!isNaN(v)) netTotal += v
+    }
+    for (const f of vatFields) {
+      const v = parseFloat(childText(fa, f))
+      if (!isNaN(v)) vatTotal += v
     }
   }
 
@@ -62,7 +91,15 @@ export function parseInvoiceXml(xml: string, ksefRef: string): InvoiceData {
   let dueDate: string | undefined
   let bankAccount: string | undefined
   if (platnosc) {
-    dueDate = text(platnosc, 'TerminPlatnosci') || undefined
+    // FA(3): TerminPlatnosci is a complex element with Termin child
+    // FA(2): TerminPlatnosci is a simple text element
+    const terminEl = find(platnosc, 'TerminPlatnosci')
+    if (terminEl) {
+      const termin = childText(terminEl, 'Termin')
+      dueDate = (termin || terminEl.textContent?.trim() || undefined) as string | undefined
+      // Guard against textContent pulling in child element text
+      if (dueDate && dueDate.length > 10) dueDate = termin || undefined
+    }
     bankAccount = text(platnosc, 'NrRB') || undefined
   }
 

@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { apiFetch } from '../api'
 import { useAuthStore } from './auth'
 import { decryptBlob, encryptBlob, arrayBufferToBase64, base64ToArrayBuffer } from '../crypto'
-import { queryKsefInvoices, downloadKsefInvoice } from '../ksef'
+import { authenticateKsef, queryKsefInvoices, downloadKsefInvoice } from '../ksef'
 import { parseInvoiceXml } from '../invoiceParser'
 
 export interface Invoice {
@@ -207,9 +207,42 @@ export const useInvoicesStore = defineStore('invoices', () => {
     return newHeaders.length
   }
 
+  async function redownloadInvoice(ksefRef: string): Promise<void> {
+    const auth = useAuthStore()
+    if (!auth.activeNip || !auth.aesKey) {
+      throw new Error('Brak aktywnego NIP lub klucza szyfrującego')
+    }
+
+    // Authenticate with KSeF if we don't have a token yet
+    if (!auth.ksefAccessToken) {
+      const tokens = await authenticateKsef(auth.activeNip)
+      auth.ksefAccessToken = tokens.accessToken
+    }
+
+    const xml = await downloadKsefInvoice(ksefRef, auth.ksefAccessToken!)
+    const data = parseInvoiceXml(xml, ksefRef)
+    data.xml = xml
+
+    const plaintext = new TextEncoder().encode(JSON.stringify(data))
+    const encrypted = await encryptBlob(auth.aesKey, plaintext)
+    const blob = arrayBufferToBase64(encrypted)
+
+    const res = await apiFetch(
+      `/api/invoices/${auth.activeNip}/${encodeURIComponent(ksefRef)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ encrypted_blob: blob }),
+      },
+    )
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+    await fetchInvoices()
+  }
+
   return {
     invoices, decryptedInvoices, decryptError,
     showIgnored, showPaid, loading, syncProgress,
-    fetchInvoices, updateFlags, syncFromKsef,
+    fetchInvoices, updateFlags, syncFromKsef, redownloadInvoice,
   }
 })
