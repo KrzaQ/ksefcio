@@ -113,8 +113,9 @@ async function doSync(nip: string) {
       entity.ksefNips = [...(entity.ksefNips ?? []), nip]
       entities.addEntity(entity)
     }
-    console.log('[sync] KSeF auth success')
-    // TODO Phase 2.2: fetch invoices from KSeF using the token
+    console.log('[sync] KSeF auth success, fetching invoices...')
+    const count = await store.syncFromKsef(tokens.accessToken)
+    console.log(`[sync] Synced ${count} new invoices`)
   } catch (e) {
     console.error('[sync] Error:', e)
     syncError.value = e instanceof Error ? e.message : 'Nieznany błąd'
@@ -156,6 +157,10 @@ async function doSync(nip: string) {
           {{ syncing ? 'Synchronizacja...' : 'Synchronizuj z KSeF' }}
         </button>
       </div>
+    </div>
+
+    <div v-if="store.syncProgress" class="bg-blue-50 text-blue-700 text-sm px-3 py-2 rounded mb-4">
+      {{ store.syncProgress }}
     </div>
 
     <div v-if="syncError" class="bg-red-50 text-red-700 text-sm px-3 py-2 rounded mb-4">

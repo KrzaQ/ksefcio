@@ -69,6 +69,11 @@ def _sha256_b64(data: bytes) -> str:
     return base64.b64encode(hashlib.sha256(data).digest()).decode("ascii")
 
 
+def _extract_token(val) -> str:
+    """KSeF returns tokens as either a string or {"token": "...", "validUntil": "..."}."""
+    return val["token"] if isinstance(val, dict) else val
+
+
 def _detect_sig_algo(cert: x509.Certificate) -> str:
     if isinstance(cert.public_key(), ec.EllipticCurvePublicKey):
         return SIG_ALGO_EC
@@ -278,8 +283,7 @@ async def finalize(
         )
 
     submit_data = submit_resp.json()
-    auth_token_obj = submit_data["authenticationToken"]
-    auth_token = auth_token_obj["token"] if isinstance(auth_token_obj, dict) else auth_token_obj
+    auth_token = _extract_token(submit_data["authenticationToken"])
     ref_number = submit_data["referenceNumber"]
 
     # Poll for completion
@@ -322,8 +326,8 @@ async def finalize(
 
     tokens = redeem_resp.json()
     return {
-        "access_token": tokens.get("accessToken", auth_token),
-        "refresh_token": tokens.get("refreshToken", ""),
+        "access_token": _extract_token(tokens.get("accessToken", auth_token)),
+        "refresh_token": _extract_token(tokens.get("refreshToken", "")),
     }
 
 

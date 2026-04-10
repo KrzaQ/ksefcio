@@ -2,7 +2,9 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiFetch } from '../api'
 import { useAuthStore } from './auth'
-import { decryptBlob, base64ToArrayBuffer } from '../crypto'
+import { decryptBlob, encryptBlob, arrayBufferToBase64, base64ToArrayBuffer } from '../crypto'
+import { queryKsefInvoices, downloadKsefInvoice } from '../ksef'
+import { parseInvoiceXml } from '../invoiceParser'
 
 export interface Invoice {
   ksef_ref: string
@@ -27,6 +29,7 @@ export interface InvoiceData {
   currency: string
   due_date?: string
   bank_account?: string
+  xml?: string  // full FA XML from KSeF
 }
 
 export interface DecryptedInvoice extends InvoiceData {
@@ -56,7 +59,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
       invoices.value.map(async (inv): Promise<DecryptedInvoice> => {
         const encrypted = base64ToArrayBuffer(inv.encrypted_blob)
         const plaintext = await decryptBlob(auth.aesKey!, encrypted)
-        const data: InvoiceData = JSON.parse(new TextDecoder().decode(plaintext))
+        const { xml: _xml, ...data }: InvoiceData = JSON.parse(new TextDecoder().decode(plaintext))
         return {
           ...data,
           ignored: inv.ignored,
@@ -135,9 +138,78 @@ export const useInvoicesStore = defineStore('invoices', () => {
     }
   }
 
+  const syncProgress = ref('')
+
+  async function syncFromKsef(accessToken: string): Promise<number> {
+    const auth = useAuthStore()
+    if (!auth.activeNip || !auth.aesKey) throw new Error('No active NIP or AES key')
+
+    // Fetch raw invoice list (without decrypting) to know which refs we already have
+    const params = new URLSearchParams()
+    if (showIgnored.value) params.set('include_ignored', 'true')
+    const qs = params.toString()
+    const base = `/api/invoices/${auth.activeNip}`
+    const existingRes = await apiFetch(qs ? `${base}?${qs}` : base)
+    const existingList: Invoice[] = existingRes.ok ? await existingRes.json() : []
+    const existingRefs = new Set(existingList.map(i => i.ksef_ref))
+
+    // Query KSeF for invoices in the last 12 months (API allows max 3 months per query)
+    const now = new Date()
+    const yearAgo = new Date(now)
+    yearAgo.setFullYear(yearAgo.getFullYear() - 1)
+
+    syncProgress.value = 'Pobieranie listy faktur z KSeF...'
+    const headers = await queryKsefInvoices(accessToken, yearAgo, now)
+
+    const newHeaders = headers.filter(h => !existingRefs.has(h.ksefNumber))
+    if (newHeaders.length === 0) {
+      syncProgress.value = ''
+      return 0
+    }
+
+    let synced = 0
+    for (const header of newHeaders) {
+      // KSeF rate limit: 16 requests/minute for invoice downloads
+      if (synced > 0) await new Promise(r => setTimeout(r, 5000))
+      synced++
+      syncProgress.value = `Pobieranie faktury ${synced}/${newHeaders.length}...`
+
+      const xml = await downloadKsefInvoice(header.ksefNumber, accessToken)
+      const data = parseInvoiceXml(xml, header.ksefNumber)
+      data.xml = xml
+
+      // Fill in amounts from metadata if XML parsing missed them
+      if (data.gross_amount === '0.00' && header.grossAmount) {
+        data.gross_amount = header.grossAmount.toFixed(2)
+        data.net_amount = header.netAmount.toFixed(2)
+        data.vat_amount = header.vatAmount.toFixed(2)
+      }
+      if (!data.seller_name && header.seller?.name) data.seller_name = header.seller.name
+      if (!data.seller_nip && header.seller?.nip) data.seller_nip = header.seller.nip
+      if (!data.currency) data.currency = header.currency
+
+      const plaintext = new TextEncoder().encode(JSON.stringify(data))
+      const encrypted = await encryptBlob(auth.aesKey!, plaintext)
+      const blob = arrayBufferToBase64(encrypted)
+
+      await apiFetch(
+        `/api/invoices/${auth.activeNip}/${encodeURIComponent(header.ksefNumber)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ encrypted_blob: blob }),
+        },
+      )
+    }
+
+    syncProgress.value = ''
+    await fetchInvoices()
+    return newHeaders.length
+  }
+
   return {
     invoices, decryptedInvoices, decryptError,
-    showIgnored, showPaid, loading,
-    fetchInvoices, updateFlags,
+    showIgnored, showPaid, loading, syncProgress,
+    fetchInvoices, updateFlags, syncFromKsef,
   }
 })
