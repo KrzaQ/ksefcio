@@ -3,11 +3,13 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useInvoicesStore, type DecryptedInvoice } from '../stores/invoices'
 import { useAuthStore } from '../stores/auth'
+import { useEntitiesStore } from '../stores/entities'
 import { authenticateKsef } from '../ksef'
 
 const router = useRouter()
 const store = useInvoicesStore()
 const auth = useAuthStore()
+const entities = useEntitiesStore()
 
 type SortKey = 'issue_date' | 'seller_name' | 'gross_amount'
 const sortKey = ref<SortKey>('issue_date')
@@ -104,6 +106,12 @@ async function doSync(nip: string) {
     auth.activeNip = nip
     if (!auth.knownNips.includes(nip)) {
       auth.knownNips.push(nip)
+    }
+    // Persist verified NIP to entity in localStorage
+    const entity = entities.getActive()
+    if (entity && !entity.ksefNips?.includes(nip)) {
+      entity.ksefNips = [...(entity.ksefNips ?? []), nip]
+      entities.addEntity(entity)
     }
     console.log('[sync] KSeF auth success')
     // TODO Phase 2.2: fetch invoices from KSeF using the token

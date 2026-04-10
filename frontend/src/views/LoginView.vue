@@ -137,15 +137,17 @@ async function login() {
       console.log('[login] AES key generated and stored')
     }
 
-    // 5. Save entity to localStorage (cert + encrypted key)
-    entities.addEntity({ identity: userId, name, certPem, keyPem })
+    // 5. Save entity to localStorage (cert + encrypted key — preserves existing ksefNips)
+    const existingEntity = entities.entities.find(e => e.identity === userId)
+    entities.addEntity({ identity: userId, name, certPem, keyPem, ksefNips: existingEntity?.ksefNips })
 
     // 6. Set session state
     auth.login(signingKey, unwrapKey, derBytes, userId, name, aesKey)
-    const nips: string[] = userData?.nips ?? []
-    auth.knownNips = nips
-    auth.activeNip = nips[0] ?? null
-    console.log('[login] Session established for', userId, 'nips:', nips)
+    const serverNips: string[] = userData?.nips ?? []
+    const entityNips: string[] = existingEntity?.ksefNips ?? []
+    auth.knownNips = [...new Set([...entityNips, ...serverNips])]
+    auth.activeNip = auth.knownNips[0] ?? null
+    console.log('[login] Session established for', userId, 'nips:', auth.knownNips)
 
     // 7. Navigate
     router.push('/invoices')
