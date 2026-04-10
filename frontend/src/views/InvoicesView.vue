@@ -2,13 +2,24 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useInvoicesStore, type DecryptedInvoice } from '../stores/invoices'
+import { useAuthStore } from '../stores/auth'
+import { useEntitiesStore } from '../stores/entities'
+import { authenticateKsef } from '../ksef'
 
 const router = useRouter()
 const store = useInvoicesStore()
+const auth = useAuthStore()
+const entities = useEntitiesStore()
 
 type SortKey = 'issue_date' | 'seller_name' | 'gross_amount'
 const sortKey = ref<SortKey>('issue_date')
 const sortAsc = ref(false)
+
+// KSeF sync state
+const syncing = ref(false)
+const syncError = ref('')
+const showNipPrompt = ref(false)
+const nipInput = ref('')
 
 onMounted(() => store.fetchInvoices())
 
@@ -62,6 +73,66 @@ async function toggleIgnored(inv: DecryptedInvoice) {
 function goToDetail(inv: DecryptedInvoice) {
   router.push(`/invoices/${encodeURIComponent(inv.ksef_ref)}`)
 }
+
+/** Resolve the NIP to use for KSeF auth. */
+function resolveKsefNip(): string | null {
+  const entity = entities.getActive()
+
+  // Entity has a saved ksefNip
+  if (entity?.ksefNip) return entity.ksefNip
+
+  // Cert identity is NIP (10 digits)
+  if (auth.nip && auth.nip.length === 10) return auth.nip
+
+  // PESEL (11 digits) — need to ask user
+  return null
+}
+
+async function startSync() {
+  syncError.value = ''
+
+  const nip = resolveKsefNip()
+  if (!nip) {
+    showNipPrompt.value = true
+    return
+  }
+
+  await doSync(nip)
+}
+
+async function submitNip() {
+  const nip = nipInput.value.replace(/\s/g, '')
+  if (!/^\d{10}$/.test(nip)) {
+    syncError.value = 'NIP musi mieć 10 cyfr'
+    return
+  }
+
+  // Save for next time
+  const entity = entities.getActive()
+  if (entity) {
+    entity.ksefNip = nip
+    entities.addEntity(entity)
+  }
+
+  showNipPrompt.value = false
+  await doSync(nip)
+}
+
+async function doSync(nip: string) {
+  syncing.value = true
+  syncError.value = ''
+  try {
+    const tokens = await authenticateKsef(nip)
+    auth.ksefAccessToken = tokens.accessToken
+    console.log('[sync] KSeF auth success')
+    // TODO Phase 2.2: fetch invoices from KSeF using the token
+  } catch (e) {
+    console.error('[sync] Error:', e)
+    syncError.value = e instanceof Error ? e.message : 'Nieznany błąd'
+  } finally {
+    syncing.value = false
+  }
+}
 </script>
 
 <template>
@@ -69,11 +140,44 @@ function goToDetail(inv: DecryptedInvoice) {
     <div class="flex items-center justify-between mb-4">
       <h1 class="text-xl font-semibold">Faktury</h1>
       <button
-        disabled
-        class="bg-gray-400 text-white px-4 py-2 rounded text-sm cursor-not-allowed"
+        @click="startSync"
+        :disabled="syncing"
+        class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        Synchronizuj z KSeF
+        {{ syncing ? 'Synchronizacja...' : 'Synchronizuj z KSeF' }}
       </button>
+    </div>
+
+    <!-- NIP prompt for PESEL certs -->
+    <div v-if="showNipPrompt" class="bg-gray-50 border border-gray-200 rounded p-4 mb-4">
+      <p class="text-sm text-gray-700 mb-2">
+        Twój certyfikat zawiera PESEL. Podaj NIP firmy do autoryzacji w KSeF:
+      </p>
+      <div class="flex gap-2">
+        <input
+          v-model="nipInput"
+          placeholder="NIP (10 cyfr)"
+          class="border border-gray-300 rounded px-3 py-1.5 text-sm flex-1"
+          maxlength="10"
+          @keyup.enter="submitNip"
+        />
+        <button
+          @click="submitNip"
+          class="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700"
+        >
+          OK
+        </button>
+        <button
+          @click="showNipPrompt = false"
+          class="text-gray-500 px-2 text-sm hover:text-gray-700"
+        >
+          Anuluj
+        </button>
+      </div>
+    </div>
+
+    <div v-if="syncError" class="bg-red-50 text-red-700 text-sm px-3 py-2 rounded mb-4">
+      {{ syncError }}
     </div>
 
     <div class="flex items-center gap-4 mb-4 text-sm">

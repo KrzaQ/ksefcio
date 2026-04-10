@@ -6,6 +6,7 @@ export interface Entity {
   name: string
   certPem: string   // PEM certificate
   keyPem: string    // Encrypted PKCS#8 PEM (password-protected)
+  ksefNip?: string  // Business NIP for KSeF (required when cert identity is PESEL)
 }
 
 const STORAGE_KEY = 'ksefcio-entities'

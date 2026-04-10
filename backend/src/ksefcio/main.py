@@ -18,6 +18,7 @@ from ksefcio.db import (
     update_wrapped_key,
     upsert_invoice,
 )
+from ksefcio.ksef_auth import router as ksef_auth_router
 from ksefcio.ksef_proxy import close_ksef_client
 from ksefcio.ksef_proxy import router as ksef_router
 
@@ -40,6 +41,7 @@ if os.environ.get("KSEFCIO_DEV"):
         allow_headers=["*"],
     )
 
+app.include_router(ksef_auth_router)  # must be before ksef_router (catch-all)
 app.include_router(ksef_router)
 
 

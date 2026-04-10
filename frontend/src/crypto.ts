@@ -447,6 +447,16 @@ export async function deleteAesKey(nip: string): Promise<void> {
   })
 }
 
+// --- Raw digest signing (for XAdES split signing) ---
+
+export async function signDigest(privateKey: CryptoKey, data: ArrayBuffer): Promise<string> {
+  const algo: AlgorithmIdentifier = privateKey.algorithm.name === 'ECDSA'
+    ? { name: 'ECDSA', hash: 'SHA-256' } as EcdsaParams
+    : { name: 'RSASSA-PKCS1-v1_5' }
+  const signature = await window.crypto.subtle.sign(algo, privateKey, data)
+  return arrayBufferToBase64(signature)
+}
+
 // --- AES-GCM blob encrypt/decrypt ---
 
 export async function encryptBlob(aesKey: CryptoKey, plaintext: ArrayBuffer): Promise<ArrayBuffer> {

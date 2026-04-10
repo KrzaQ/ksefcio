@@ -13,7 +13,7 @@ Per-request signed auth — no JWTs, no sessions.
 ## Phase 2: KSeF Sync
 Fetching invoices from KSeF through the proxy.
 
-1. KSeF API authentication — XAdES-signed AuthTokenRequest XML (hardest piece — browser-side XAdES signing)
+1. ✓ KSeF API authentication — split XAdES signing (backend builds XML + C14N, frontend signs with Web Crypto)
 2. Fetch invoice list via KSeF query API
 3. Fetch individual invoice XML
 4. Encrypt invoice data with AES key, store as blobs on ksefcio server
@@ -22,11 +22,11 @@ Fetching invoices from KSeF through the proxy.
 ## Phase 3: Invoice List
 Decrypt and display.
 
-1. Fetch encrypted blobs from ksefcio server
-2. Decrypt client-side with AES key
+1. ✓ Fetch encrypted blobs from ksefcio server
+2. ✓ Decrypt client-side with AES key
 3. Parse FA(2) XML, extract key fields (seller, amount, date, due date, bank account)
-4. Render table with sorting/filtering
-5. Paid/ignored toggle buttons, persisted via PATCH to server
+4. ✓ Render table with sorting/filtering
+5. ✓ Paid/ignored toggle buttons, persisted via PATCH to server
 
 ## Phase 4: Invoice Detail
 Single invoice view.

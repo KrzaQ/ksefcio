@@ -9,6 +9,7 @@ dependencies = [
 
     "httpx>=0.28",
     "aiosqlite>=0.21",
+    "lxml>=5.0",
 ]
 
 [build-system]

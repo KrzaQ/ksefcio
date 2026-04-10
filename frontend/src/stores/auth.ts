@@ -9,6 +9,7 @@ export const useAuthStore = defineStore('auth', () => {
   const nip = ref<string | null>(null)
   const name = ref<string | null>(null)
   const aesKey = shallowRef<CryptoKey | null>(null)
+  const ksefAccessToken = ref<string | null>(null)
 
   const isAuthenticated = computed(() => signingKey.value !== null)
 
@@ -35,7 +36,8 @@ export const useAuthStore = defineStore('auth', () => {
     nip.value = null
     name.value = null
     aesKey.value = null
+    ksefAccessToken.value = null
   }
 
-  return { signingKey, unwrapKey, certDer, nip, name, aesKey, isAuthenticated, login, logout }
+  return { signingKey, unwrapKey, certDer, nip, name, aesKey, ksefAccessToken, isAuthenticated, login, logout }
 })
