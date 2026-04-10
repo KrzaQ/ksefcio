@@ -48,7 +48,6 @@ app.include_router(ksef_router)
 
 class WrappedKeyRequest(BaseModel):
     wrapped_aes_key: str  # base64
-    cert_fingerprint: str
 
 
 @app.get("/api/users/me")
@@ -76,7 +75,7 @@ async def set_wrapped_key(
     db=Depends(get_db),
 ):
     await update_wrapped_key(
-        db, user.nip, base64.b64decode(req.wrapped_aes_key), req.cert_fingerprint
+        db, user.nip, base64.b64decode(req.wrapped_aes_key), user.cert_fingerprint
     )
     return {"ok": True}
 

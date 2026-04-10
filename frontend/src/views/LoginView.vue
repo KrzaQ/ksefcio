@@ -127,7 +127,6 @@ async function login() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             wrapped_aes_key: arrayBufferToBase64(wrappedBytes),
-            cert_fingerprint: 'auto',
           }),
         })
         if (!uploadRes.ok) {
