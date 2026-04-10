@@ -82,7 +82,7 @@ function resolveKsefNip(): string | null {
   if (entity?.ksefNip) return entity.ksefNip
 
   // Cert identity is NIP (10 digits)
-  if (auth.nip && auth.nip.length === 10) return auth.nip
+  if (auth.identity && auth.identity.length === 10) return auth.identity
 
   // PESEL (11 digits) — need to ask user
   return null

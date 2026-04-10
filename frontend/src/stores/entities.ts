@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
 export interface Entity {
-  nip: string       // NIP or PESEL (user identifier from cert)
+  identity: string  // NIP or PESEL (user identifier from cert)
   name: string
   certPem: string   // PEM certificate
   keyPem: string    // Encrypted PKCS#8 PEM (password-protected)
@@ -23,13 +23,13 @@ function loadActiveNip(): string | null {
 
 export const useEntitiesStore = defineStore('entities', () => {
   const entities = ref<Entity[]>(loadEntities())
-  const activeNip = ref<string | null>(loadActiveNip())
+  const activeIdentity = ref<string | null>(loadActiveNip())
 
   watch(entities, (val) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(val))
   }, { deep: true })
 
-  watch(activeNip, (val) => {
+  watch(activeIdentity, (val) => {
     if (val) {
       localStorage.setItem(ACTIVE_KEY, val)
     } else {
@@ -38,25 +38,25 @@ export const useEntitiesStore = defineStore('entities', () => {
   })
 
   function addEntity(entity: Entity) {
-    const idx = entities.value.findIndex(e => e.nip === entity.nip)
+    const idx = entities.value.findIndex(e => e.identity === entity.identity)
     if (idx >= 0) {
       entities.value[idx] = entity
     } else {
       entities.value.push(entity)
     }
-    activeNip.value = entity.nip
+    activeIdentity.value = entity.identity
   }
 
-  function removeEntity(nip: string) {
-    entities.value = entities.value.filter(e => e.nip !== nip)
-    if (activeNip.value === nip) {
-      activeNip.value = entities.value[0]?.nip ?? null
+  function removeEntity(identity: string) {
+    entities.value = entities.value.filter(e => e.identity !== identity)
+    if (activeIdentity.value === identity) {
+      activeIdentity.value = entities.value[0]?.identity ?? null
     }
   }
 
   function getActive(): Entity | undefined {
-    return entities.value.find(e => e.nip === activeNip.value)
+    return entities.value.find(e => e.identity === activeIdentity.value)
   }
 
-  return { entities, activeNip, addEntity, removeEntity, getActive }
+  return { entities, activeIdentity, addEntity, removeEntity, getActive }
 })

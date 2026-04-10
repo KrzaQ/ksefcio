@@ -138,7 +138,7 @@ def parse_cert_der(cert_b64: str) -> x509.Certificate:
 
 @dataclass
 class AuthenticatedUser:
-    nip: str
+    identity: str
     name: str
     cert_fingerprint: str
 
@@ -195,9 +195,9 @@ async def get_authenticated_user(request: Request, db=Depends(get_db)) -> Authen
         raise HTTPException(401, "Signature verification failed")
 
     # Extract identity and auto-upsert user
-    nip = extract_user_id(cert)
+    identity = extract_user_id(cert)
     name = extract_name(cert)
     fp = cert_fingerprint(cert)
-    await upsert_user(db, nip, name, fp)
+    await upsert_user(db, identity, name, fp)
 
-    return AuthenticatedUser(nip=nip, name=name, cert_fingerprint=fp)
+    return AuthenticatedUser(identity=identity, name=name, cert_fingerprint=fp)

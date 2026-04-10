@@ -16,8 +16,9 @@ The server never sees unencrypted user data. All invoice metadata and content is
 
 - Users authenticate via KSeF certificates (.key + .pem) issued by the Ministry of Finance.
 - Auth is challenge-response: server sends nonce, client signs with private key, server verifies signature against the public cert and the KSeF CA chain (root: CCK MF Root, intermediate: CCK KSeF).
-- NIP extracted from the certificate subject is the stable user identity:
-  - JDG (natural person): `serialNumber` = `TINPL-XXXXXXXXXX`
+- User identity is extracted from the certificate subject (NIP or PESEL):
+  - JDG (natural person, NIP): `serialNumber` = `TINPL-XXXXXXXXXX`
+  - JDG (natural person, PESEL): `serialNumber` = `PNOPL-XXXXXXXXXXX`
   - Spółka (organization): `organizationIdentifier` = `VATPL-XXXXXXXXXX`
 
 ### Encryption
@@ -80,14 +81,14 @@ ksefcio/
 
 ```
 users
-  nip             -- primary identity, extracted from verified certificate (plaintext)
+  identity        -- primary key, NIP or PESEL extracted from verified certificate (plaintext)
   name            -- company/person name from certificate (plaintext)
   wrapped_aes_key -- AES key wrapped with user's certificate public key
   cert_fingerprint
   ...
 
 invoices
-  nip             -- FK to users
+  identity        -- FK to users
   ksef_ref        -- KSeF reference number
   ignored         -- bool, user marked as ignored
   paid            -- bool, user marked as paid

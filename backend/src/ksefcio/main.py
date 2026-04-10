@@ -54,11 +54,11 @@ class WrappedKeyRequest(BaseModel):
 
 @app.get("/api/users/me")
 async def get_me(user: AuthenticatedUser = Depends(get_authenticated_user), db=Depends(get_db)):
-    db_user = await get_user(db, user.nip)
+    db_user = await get_user(db, user.identity)
     if not db_user:
         raise HTTPException(404, "User not found")
     return {
-        "nip": db_user["nip"],
+        "identity": db_user["identity"],
         "name": db_user["name"],
         "has_wrapped_key": db_user["wrapped_aes_key"] is not None,
         "wrapped_aes_key": (
@@ -77,7 +77,7 @@ async def set_wrapped_key(
     db=Depends(get_db),
 ):
     await update_wrapped_key(
-        db, user.nip, base64.b64decode(req.wrapped_aes_key), user.cert_fingerprint
+        db, user.identity, base64.b64decode(req.wrapped_aes_key), user.cert_fingerprint
     )
     return {"ok": True}
 
@@ -100,7 +100,7 @@ async def list_invoices(
     user: AuthenticatedUser = Depends(get_authenticated_user),
     db=Depends(get_db),
 ):
-    invoices = await get_invoices(db, user.nip, include_ignored)
+    invoices = await get_invoices(db, user.identity, include_ignored)
     return [
         {
             "ksef_ref": inv["ksef_ref"],
@@ -121,7 +121,7 @@ async def upsert_invoice_endpoint(
     user: AuthenticatedUser = Depends(get_authenticated_user),
     db=Depends(get_db),
 ):
-    inv = await upsert_invoice(db, user.nip, ksef_ref, base64.b64decode(req.encrypted_blob))
+    inv = await upsert_invoice(db, user.identity, ksef_ref, base64.b64decode(req.encrypted_blob))
     return {
         "ksef_ref": inv["ksef_ref"],
         "ignored": bool(inv["ignored"]),
@@ -136,7 +136,7 @@ async def patch_invoice(
     user: AuthenticatedUser = Depends(get_authenticated_user),
     db=Depends(get_db),
 ):
-    await update_invoice_flags(db, user.nip, ksef_ref, req.ignored, req.paid)
+    await update_invoice_flags(db, user.identity, ksef_ref, req.ignored, req.paid)
     return {"ok": True}
 
 

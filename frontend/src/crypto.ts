@@ -417,31 +417,31 @@ function openDB(): Promise<IDBDatabase> {
   })
 }
 
-export async function storeAesKey(nip: string, key: CryptoKey): Promise<void> {
+export async function storeAesKey(identity: string, key: CryptoKey): Promise<void> {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE, 'readwrite')
-    tx.objectStore(IDB_STORE).put(key, nip)
+    tx.objectStore(IDB_STORE).put(key, identity)
     tx.oncomplete = () => { db.close(); resolve() }
     tx.onerror = () => { db.close(); reject(tx.error) }
   })
 }
 
-export async function loadAesKey(nip: string): Promise<CryptoKey | null> {
+export async function loadAesKey(identity: string): Promise<CryptoKey | null> {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE, 'readonly')
-    const req = tx.objectStore(IDB_STORE).get(nip)
+    const req = tx.objectStore(IDB_STORE).get(identity)
     req.onsuccess = () => { db.close(); resolve(req.result ?? null) }
     req.onerror = () => { db.close(); reject(req.error) }
   })
 }
 
-export async function deleteAesKey(nip: string): Promise<void> {
+export async function deleteAesKey(identity: string): Promise<void> {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE, 'readwrite')
-    tx.objectStore(IDB_STORE).delete(nip)
+    tx.objectStore(IDB_STORE).delete(identity)
     tx.oncomplete = () => { db.close(); resolve() }
     tx.onerror = () => { db.close(); reject(tx.error) }
   })

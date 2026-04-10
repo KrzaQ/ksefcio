@@ -22,7 +22,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const entities = useEntitiesStore()
 
-const selectedNip = ref<string | null>(entities.entities[0]?.nip ?? null)
+const selectedIdentity = ref<string | null>(entities.entities[0]?.identity ?? null)
 const showNewForm = ref(entities.entities.length === 0)
 
 const certFile = ref<File | null>(null)
@@ -32,7 +32,7 @@ const error = ref('')
 const loading = ref(false)
 
 const selectedEntity = computed(() =>
-  entities.entities.find(e => e.nip === selectedNip.value),
+  entities.entities.find(e => e.identity === selectedIdentity.value),
 )
 
 function onCertChange(e: Event) {
@@ -141,7 +141,7 @@ async function login() {
     }
 
     // 4. Save entity to localStorage (cert + encrypted key)
-    entities.addEntity({ nip: userId, name, certPem, keyPem })
+    entities.addEntity({ identity: userId, name, certPem, keyPem })
 
     // 5. Set session state
     auth.login(signingKey, unwrapKey, derBytes, userId, name, aesKey)
@@ -168,14 +168,14 @@ async function login() {
         <label class="block text-sm font-medium text-gray-700">Podmiot</label>
         <div
           v-for="entity in entities.entities"
-          :key="entity.nip"
-          @click="selectedNip = entity.nip"
+          :key="entity.identity"
+          @click="selectedIdentity = entity.identity"
           class="flex items-center gap-3 border rounded px-3 py-2 cursor-pointer"
-          :class="selectedNip === entity.nip ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'"
+          :class="selectedIdentity === entity.identity ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'"
         >
           <div class="flex-1">
             <div class="font-medium text-sm">{{ entity.name }}</div>
-            <div class="text-xs text-gray-500">{{ entity.nip }}</div>
+            <div class="text-xs text-gray-500">{{ entity.identity }}</div>
           </div>
         </div>
       </div>

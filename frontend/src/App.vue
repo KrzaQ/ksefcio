@@ -14,7 +14,7 @@ const auth = useAuthStore()
         <router-link to="/settings" class="text-sm text-gray-600 hover:text-gray-900">Ustawienia</router-link>
       </div>
       <div class="flex items-center gap-3 text-sm text-gray-500">
-        <span>{{ auth.name }} ({{ auth.nip }})</span>
+        <span>{{ auth.name }} ({{ auth.identity }})</span>
         <button @click="auth.logout()" class="text-red-600 hover:text-red-800">Wyloguj</button>
       </div>
     </nav>
