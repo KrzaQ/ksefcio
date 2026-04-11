@@ -286,7 +286,7 @@ async function doSync(nip: string) {
         <button
           @click="startSync"
           :disabled="syncing"
-          class="bg-amber-600 text-white px-4 py-2 rounded text-sm hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="border border-amber-600 text-amber-400 px-4 py-2 rounded text-sm hover:bg-amber-950/40 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {{ syncing ? 'Synchronizacja...' : 'Synchronizuj z KSeF' }}
         </button>
@@ -310,7 +310,7 @@ async function doSync(nip: string) {
         <input type="checkbox" v-model="store.showIgnored" />
         Pokaż ignorowane
       </label>
-      <button @click="selectUnpaid" class="bg-amber-600 text-white px-3 py-1.5 rounded text-sm hover:bg-amber-500">
+      <button @click="selectUnpaid" class="border border-gray-600 text-gray-400 px-3 py-1.5 rounded text-sm hover:bg-gray-800 hover:text-gray-200">
         Zaznacz nieopłacone
       </button>
     </div>
@@ -323,16 +323,16 @@ async function doSync(nip: string) {
     <div v-if="selectedRefs.size > 0" class="sticky top-0 z-10 bg-gray-900 border border-gray-700 rounded px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
       <span class="text-sm text-gray-400">Zaznaczono: {{ selectedRefs.size }}</span>
       <button @click="bulkAction({ ignored: true })" :disabled="bulkActionLoading"
-        class="bg-gray-700 text-gray-200 px-3 py-1.5 rounded text-sm hover:bg-gray-600 disabled:opacity-50">
+        class="border border-gray-600 text-gray-300 px-3 py-1.5 rounded text-sm hover:bg-gray-800 disabled:opacity-50">
         Ignoruj
       </button>
       <button @click="bulkAction({ paid: true })" :disabled="bulkActionLoading"
-        class="bg-gray-700 text-gray-200 px-3 py-1.5 rounded text-sm hover:bg-gray-600 disabled:opacity-50">
+        class="border border-gray-600 text-gray-300 px-3 py-1.5 rounded text-sm hover:bg-gray-800 disabled:opacity-50">
         Opłacone
       </button>
       <button @click="handleGenerate"
         :disabled="bulkActionLoading || anySelectedMissingAccount"
-        class="bg-amber-600 text-white px-3 py-1.5 rounded text-sm hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        class="border border-amber-600 text-amber-400 px-3 py-1.5 rounded text-sm hover:bg-amber-950/40 disabled:opacity-50 disabled:cursor-not-allowed"
         :title="anySelectedMissingAccount ? 'Odznacz faktury bez numeru konta' : ''">
         Generuj koszyk przelewów
       </button>
@@ -351,7 +351,7 @@ async function doSync(nip: string) {
           class="bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono w-72 text-gray-200 focus:border-amber-500 focus:outline-none"
           maxlength="32" />
         <button @click="saveBankAccountAndGenerate"
-          class="bg-amber-600 text-white px-3 py-2 rounded text-sm hover:bg-amber-500">
+          class="border border-amber-600 text-amber-400 px-3 py-2 rounded text-sm hover:bg-amber-950/40">
           Zapisz i generuj
         </button>
         <button @click="showBankAccountPrompt = false"
@@ -478,13 +478,13 @@ async function doSync(nip: string) {
                 <button
                   @click="redownload(inv.ksef_ref)"
                   :disabled="redownloading"
-                  class="bg-gray-700 text-gray-200 px-3 py-1 rounded hover:bg-gray-600 disabled:opacity-50"
+                  class="border border-gray-600 text-gray-400 px-3 py-1 rounded hover:bg-gray-800 hover:text-gray-200 disabled:opacity-50"
                 >
                   {{ redownloading ? 'Pobieranie...' : 'Pobierz ponownie z KSeF' }}
                 </button>
                 <button
                   @click="copyXml(inv.ksef_ref)"
-                  class="bg-gray-700 text-gray-200 px-3 py-1 rounded hover:bg-gray-600"
+                  class="border border-gray-600 text-gray-400 px-3 py-1 rounded hover:bg-gray-800 hover:text-gray-200"
                 >
                   Kopiuj XML
                 </button>
