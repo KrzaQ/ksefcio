@@ -17,7 +17,7 @@ const auth = useAuthStore()
         <button @click="auth.logout()" class="text-red-400 hover:text-red-300">Wyloguj</button>
       </div>
     </nav>
-    <main class="max-w-5xl mx-auto px-4 py-6">
+    <main class="max-w-screen-xl mx-auto px-4 py-6">
       <router-view />
     </main>
   </div>
