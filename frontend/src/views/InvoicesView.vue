@@ -247,7 +247,7 @@ async function doSync(nip: string) {
       entity.ksefNips = [...(entity.ksefNips ?? []), nip]
       entities.addEntity(entity)
     }
-    const count = await store.syncFromKsef(tokens.accessToken)
+    await store.syncFromKsef(tokens.accessToken)
   } catch (e) {
     syncError.value = e instanceof Error ? e.message : 'Nieznany błąd'
   } finally {

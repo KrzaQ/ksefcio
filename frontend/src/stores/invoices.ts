@@ -131,9 +131,10 @@ export const useInvoicesStore = defineStore('invoices', () => {
     for (const ref of ksefRefs) {
       const idx = decryptedInvoices.value.findIndex(i => i.ksef_ref === ref)
       if (idx >= 0) {
-        snapshots.set(ref, { ...decryptedInvoices.value[idx] })
-        if (flags.ignored !== undefined) decryptedInvoices.value[idx].ignored = flags.ignored
-        if (flags.paid !== undefined) decryptedInvoices.value[idx].paid = flags.paid
+        const inv = decryptedInvoices.value[idx]!
+        snapshots.set(ref, { ...inv })
+        if (flags.ignored !== undefined) inv.ignored = flags.ignored
+        if (flags.paid !== undefined) inv.paid = flags.paid
       }
     }
 
@@ -151,8 +152,9 @@ export const useInvoicesStore = defineStore('invoices', () => {
       for (const ref of ksefRefs) {
         const rawIdx = invoices.value.findIndex(i => i.ksef_ref === ref)
         if (rawIdx >= 0) {
-          if (flags.ignored !== undefined) invoices.value[rawIdx].ignored = flags.ignored
-          if (flags.paid !== undefined) invoices.value[rawIdx].paid = flags.paid
+          const raw = invoices.value[rawIdx]!
+          if (flags.ignored !== undefined) raw.ignored = flags.ignored
+          if (flags.paid !== undefined) raw.paid = flags.paid
         }
       }
     } catch (e) {
@@ -215,7 +217,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
       if (!data.currency) data.currency = header.currency
 
       const plaintext = new TextEncoder().encode(JSON.stringify(data))
-      const encrypted = await encryptBlob(auth.aesKey!, plaintext)
+      const encrypted = await encryptBlob(auth.aesKey!, plaintext.buffer as ArrayBuffer)
       const blob = arrayBufferToBase64(encrypted)
 
       await apiFetch(
@@ -250,7 +252,7 @@ export const useInvoicesStore = defineStore('invoices', () => {
     data.xml = xml
 
     const plaintext = new TextEncoder().encode(JSON.stringify(data))
-    const encrypted = await encryptBlob(auth.aesKey, plaintext)
+    const encrypted = await encryptBlob(auth.aesKey, plaintext.buffer as ArrayBuffer)
     const blob = arrayBufferToBase64(encrypted)
 
     const res = await apiFetch(
