@@ -1,0 +1,13 @@
+services:
+  ksefcio:
+    image: ghcr.io/krzaq/ksefcio:latest
+    ports:
+      - "127.0.0.1:8901:8000"
+    volumes:
+      - ksefcio-data:/data
+    environment:
+      - KSEF_API_URL=https://api.ksef.mf.gov.pl/v2
+    restart: unless-stopped
+
+volumes:
+  ksefcio-data:

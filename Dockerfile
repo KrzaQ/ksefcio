@@ -1,10 +1,12 @@
 # Stage 1: Build frontend
 FROM node:22-alpine AS frontend-build
+ARG BUILD_VERSION=dev
+ARG BUILD_COMMIT=unknown
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+RUN VITE_APP_VERSION=$BUILD_VERSION VITE_APP_COMMIT=$BUILD_COMMIT npm run build
 
 # Stage 2: Python backend + bundled frontend
 FROM python:3.12-slim AS runtime

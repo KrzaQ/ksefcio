@@ -2,6 +2,9 @@
 import { useAuthStore } from './stores/auth'
 
 const auth = useAuthStore()
+
+const appVersion = import.meta.env.VITE_APP_VERSION ?? 'dev'
+const appCommit = import.meta.env.VITE_APP_COMMIT ?? 'unknown'
 </script>
 
 <template>
@@ -20,5 +23,10 @@ const auth = useAuthStore()
     <main class="max-w-screen-xl mx-auto px-4 py-6">
       <router-view />
     </main>
+    <footer class="border-t border-gray-800 px-4 py-3 text-center text-xs text-gray-600">
+      © 2026 <a href="https://github.com/KrzaQ/ksefcio" class="text-gray-500 hover:text-amber-500">KrzaQ</a> · ksefcio
+      <span v-if="appVersion !== 'dev'" class="ml-1">{{ appVersion }}</span>
+      <span v-if="appCommit !== 'unknown'" class="ml-1 text-gray-700">{{ appCommit.slice(0, 7) }}</span>
+    </footer>
   </div>
 </template>
