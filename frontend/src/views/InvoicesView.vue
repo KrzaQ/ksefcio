@@ -4,6 +4,7 @@ import { useInvoicesStore, type DecryptedInvoice } from '../stores/invoices'
 import { useAuthStore } from '../stores/auth'
 import { useEntitiesStore } from '../stores/entities'
 import { authenticateKsef } from '../ksef'
+import { generateTransferFiles, downloadFile, cleanAccount } from '../transferGenerator'
 
 const store = useInvoicesStore()
 const auth = useAuthStore()
@@ -28,7 +29,10 @@ onMounted(() => {
   store.fetchInvoices()
 })
 
-watch(() => auth.activeNip, () => store.fetchInvoices())
+watch(() => auth.activeNip, () => {
+  selectedRefs.value = new Set()
+  store.fetchInvoices()
+})
 watch(() => store.showIgnored, () => store.fetchInvoices())
 
 function selectNip(nip: string) {
@@ -107,6 +111,107 @@ async function redownload(ksefRef: string) {
   } finally {
     redownloading.value = false
   }
+}
+
+// Multi-select
+const selectedRefs = ref<Set<string>>(new Set())
+
+const allVisibleSelected = computed(() =>
+  filteredInvoices.value.length > 0 &&
+  filteredInvoices.value.every(inv => selectedRefs.value.has(inv.ksef_ref))
+)
+
+const selectedInvoices = computed(() =>
+  filteredInvoices.value.filter(inv => selectedRefs.value.has(inv.ksef_ref))
+)
+
+const anySelectedMissingAccount = computed(() =>
+  selectedInvoices.value.some(inv => !inv.bank_account)
+)
+
+function toggleSelect(inv: DecryptedInvoice) {
+  const s = new Set(selectedRefs.value)
+  if (s.has(inv.ksef_ref)) s.delete(inv.ksef_ref)
+  else s.add(inv.ksef_ref)
+  selectedRefs.value = s
+}
+
+function toggleSelectAll() {
+  if (allVisibleSelected.value) {
+    selectedRefs.value = new Set()
+  } else {
+    selectedRefs.value = new Set(filteredInvoices.value.map(inv => inv.ksef_ref))
+  }
+}
+
+function selectUnpaid() {
+  selectedRefs.value = new Set(
+    filteredInvoices.value.filter(inv => !inv.paid && !inv.ignored).map(inv => inv.ksef_ref)
+  )
+}
+
+// Bulk actions
+const bulkActionError = ref('')
+const bulkActionLoading = ref(false)
+
+async function bulkAction(flags: { ignored?: boolean; paid?: boolean }) {
+  bulkActionLoading.value = true
+  bulkActionError.value = ''
+  try {
+    await store.bulkUpdateFlags([...selectedRefs.value], flags)
+  } catch (e) {
+    bulkActionError.value = e instanceof Error ? e.message : 'Nieznany błąd'
+  } finally {
+    bulkActionLoading.value = false
+  }
+}
+
+// Transfer generation
+const showBankAccountPrompt = ref(false)
+const bankAccountInput = ref('')
+
+function handleGenerate() {
+  const nip = auth.activeNip
+  if (!nip) return
+  const savedAccount = entities.getNipBankAccount(nip)
+  if (!savedAccount) {
+    showBankAccountPrompt.value = true
+    return
+  }
+  doGenerate(savedAccount)
+}
+
+function saveBankAccountAndGenerate() {
+  const nip = auth.activeNip
+  if (!nip) return
+  const account = cleanAccount(bankAccountInput.value)
+  if (account.length !== 26) {
+    bulkActionError.value = 'Numer konta musi mieć 26 cyfr'
+    return
+  }
+  entities.setNipBankAccount(nip, account)
+  showBankAccountPrompt.value = false
+  doGenerate(account)
+}
+
+function doGenerate(senderAccount: string) {
+  const entity = entities.getActive()
+  if (!entity) return
+
+  const config = {
+    senderAccount,
+    senderName: entity.name,
+    titleTemplate: entities.transferTitleTemplate,
+  }
+
+  const invs = selectedInvoices.value.filter(inv => inv.bank_account)
+  const files = generateTransferFiles(invs, config)
+  const dateStr = new Date().toISOString().slice(0, 10)
+
+  files.forEach((content, idx) => {
+    const suffix = files.length > 1 ? `_${idx + 1}` : ''
+    downloadFile(content, `przelewy_${dateStr}${suffix}.csv`)
+  })
 }
 
 async function startSync() {
@@ -198,10 +303,55 @@ async function doSync(nip: string) {
         <input type="checkbox" v-model="store.showIgnored" />
         Pokaż ignorowane
       </label>
+      <button @click="selectUnpaid" class="bg-amber-600 text-white px-3 py-1.5 rounded text-sm hover:bg-amber-500">
+        Zaznacz nieopłacone
+      </button>
     </div>
 
     <div v-if="store.decryptError" class="bg-red-950/40 text-red-400 text-sm px-3 py-2 rounded mb-4">
       {{ store.decryptError }}
+    </div>
+
+    <!-- Action bar -->
+    <div v-if="selectedRefs.size > 0" class="sticky top-0 z-10 bg-gray-900 border border-gray-700 rounded px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
+      <span class="text-sm text-gray-400">Zaznaczono: {{ selectedRefs.size }}</span>
+      <button @click="bulkAction({ ignored: true })" :disabled="bulkActionLoading"
+        class="bg-gray-700 text-gray-200 px-3 py-1.5 rounded text-sm hover:bg-gray-600 disabled:opacity-50">
+        Ignoruj
+      </button>
+      <button @click="bulkAction({ paid: true })" :disabled="bulkActionLoading"
+        class="bg-gray-700 text-gray-200 px-3 py-1.5 rounded text-sm hover:bg-gray-600 disabled:opacity-50">
+        Opłacone
+      </button>
+      <button @click="handleGenerate"
+        :disabled="bulkActionLoading || anySelectedMissingAccount"
+        class="bg-amber-600 text-white px-3 py-1.5 rounded text-sm hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        :title="anySelectedMissingAccount ? 'Odznacz faktury bez numeru konta' : ''">
+        Generuj koszyk przelewów
+      </button>
+      <span v-if="anySelectedMissingAccount" class="text-red-400 text-xs">
+        Odznacz faktury bez numeru konta
+      </span>
+      <span v-if="bulkActionError" class="text-red-400 text-xs">{{ bulkActionError }}</span>
+    </div>
+
+    <!-- Bank account prompt -->
+    <div v-if="showBankAccountPrompt" class="border border-amber-600 rounded px-4 py-3 mb-4 bg-amber-950/30">
+      <p class="text-sm text-gray-300 mb-2">Podaj numer konta nadawcy dla NIP {{ auth.activeNip }}:</p>
+      <div class="flex items-center gap-2">
+        <input v-model="bankAccountInput" placeholder="26-cyfrowy numer konta"
+          @keyup.enter="saveBankAccountAndGenerate"
+          class="bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono w-72 text-gray-200 focus:border-amber-500 focus:outline-none"
+          maxlength="32" />
+        <button @click="saveBankAccountAndGenerate"
+          class="bg-amber-600 text-white px-3 py-2 rounded text-sm hover:bg-amber-500">
+          Zapisz i generuj
+        </button>
+        <button @click="showBankAccountPrompt = false"
+          class="text-gray-500 text-sm hover:text-gray-300">
+          Anuluj
+        </button>
+      </div>
     </div>
 
     <div v-if="!auth.activeNip" class="text-gray-500 text-sm">
@@ -219,6 +369,9 @@ async function doSync(nip: string) {
     <table v-else class="w-full text-sm">
       <thead>
         <tr class="border-b border-gray-700 text-left text-gray-500">
+          <th class="py-2 px-2 w-8" @click.stop>
+            <input type="checkbox" :checked="allVisibleSelected" @change="toggleSelectAll" />
+          </th>
           <th @click="toggleSort('issue_date')" class="py-2 px-2 cursor-pointer select-none">
             Data wystawienia{{ sortIndicator('issue_date') }}
           </th>
@@ -241,10 +394,16 @@ async function doSync(nip: string) {
             class="border-b border-gray-800 hover:bg-gray-900 cursor-pointer"
             :class="{ 'opacity-40': inv.ignored, 'text-gray-600': inv.paid }"
           >
+            <td class="py-2 px-2 text-center" @click.stop>
+              <input type="checkbox" :checked="selectedRefs.has(inv.ksef_ref)" @change="toggleSelect(inv)" />
+            </td>
             <td class="py-2 px-2">{{ inv.issue_date }}</td>
             <td class="py-2 px-2 font-mono text-xs">{{ inv.invoice_number }}</td>
             <td class="py-2 px-2">
-              <div>{{ inv.seller_name }}</div>
+              <div class="flex items-center gap-1">
+                <span>{{ inv.seller_name }}</span>
+                <span v-if="!inv.bank_account" class="text-red-500 text-xs font-bold" title="Brak numeru konta bankowego">!</span>
+              </div>
               <div class="text-xs text-gray-500">{{ inv.seller_nip }}</div>
             </td>
             <td class="py-2 px-2 text-right font-mono">
@@ -260,7 +419,7 @@ async function doSync(nip: string) {
           </tr>
           <!-- Expanded detail row -->
           <tr v-if="expandedRef === inv.ksef_ref">
-            <td colspan="7" class="bg-gray-900 px-4 py-3 border-b border-gray-800">
+            <td colspan="8" class="bg-gray-900 px-4 py-3 border-b border-gray-800">
               <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-sm max-w-lg mb-3">
                 <div>
                   <span class="text-gray-500 text-xs">Nabywca</span>

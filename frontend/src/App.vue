@@ -10,7 +10,6 @@ const auth = useAuthStore()
       <div class="flex items-center gap-4">
         <router-link to="/invoices" class="text-amber-400 text-xl tracking-wide" style="font-family: 'Cinzel Decorative', serif; font-weight: 700;">ksefcio</router-link>
         <router-link to="/invoices" class="text-sm text-gray-400 hover:text-gray-200">Faktury</router-link>
-        <router-link to="/basket" class="text-sm text-gray-400 hover:text-gray-200">Koszyk</router-link>
         <router-link to="/settings" class="text-sm text-gray-400 hover:text-gray-200">Ustawienia</router-link>
       </div>
       <div class="flex items-center gap-3 text-sm text-gray-500">

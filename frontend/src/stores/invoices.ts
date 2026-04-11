@@ -69,7 +69,11 @@ export const useInvoicesStore = defineStore('invoices', () => {
       invoices.value.map(async (inv): Promise<DecryptedInvoice> => {
         const encrypted = base64ToArrayBuffer(inv.encrypted_blob)
         const plaintext = await decryptBlob(auth.aesKey!, encrypted)
-        const { xml: _xml, ...data }: InvoiceData = JSON.parse(new TextDecoder().decode(plaintext))
+        const stored: InvoiceData = JSON.parse(new TextDecoder().decode(plaintext))
+        if (!stored.bank_account && stored.xml) {
+          stored.bank_account = parseInvoiceXml(stored.xml, inv.ksef_ref).bank_account
+        }
+        const { xml: _xml, ...data } = stored
         return {
           ...data,
           ignored: inv.ignored,
@@ -116,33 +120,42 @@ export const useInvoicesStore = defineStore('invoices', () => {
   }
 
   async function updateFlags(ksefRef: string, flags: { ignored?: boolean; paid?: boolean }) {
-    // Optimistic update
-    const idx = decryptedInvoices.value.findIndex(i => i.ksef_ref === ksefRef)
-    const prev = idx >= 0 ? { ...decryptedInvoices.value[idx] } : null
-    if (idx >= 0) {
-      if (flags.ignored !== undefined) decryptedInvoices.value[idx].ignored = flags.ignored
-      if (flags.paid !== undefined) decryptedInvoices.value[idx].paid = flags.paid
+    return bulkUpdateFlags([ksefRef], flags)
+  }
+
+  async function bulkUpdateFlags(ksefRefs: string[], flags: { ignored?: boolean; paid?: boolean }) {
+    const snapshots = new Map<string, DecryptedInvoice>()
+    for (const ref of ksefRefs) {
+      const idx = decryptedInvoices.value.findIndex(i => i.ksef_ref === ref)
+      if (idx >= 0) {
+        snapshots.set(ref, { ...decryptedInvoices.value[idx] })
+        if (flags.ignored !== undefined) decryptedInvoices.value[idx].ignored = flags.ignored
+        if (flags.paid !== undefined) decryptedInvoices.value[idx].paid = flags.paid
+      }
     }
 
     try {
       const auth = useAuthStore()
-      const res = await apiFetch(`/api/invoices/${auth.activeNip}/${encodeURIComponent(ksefRef)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(flags),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-      // Sync raw invoices array
-      const rawIdx = invoices.value.findIndex(i => i.ksef_ref === ksefRef)
-      if (rawIdx >= 0) {
-        if (flags.ignored !== undefined) invoices.value[rawIdx].ignored = flags.ignored
-        if (flags.paid !== undefined) invoices.value[rawIdx].paid = flags.paid
+      await Promise.all(ksefRefs.map(ref =>
+        apiFetch(`/api/invoices/${auth.activeNip}/${encodeURIComponent(ref)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(flags),
+        }).then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status} for ${ref}`)
+        })
+      ))
+      for (const ref of ksefRefs) {
+        const rawIdx = invoices.value.findIndex(i => i.ksef_ref === ref)
+        if (rawIdx >= 0) {
+          if (flags.ignored !== undefined) invoices.value[rawIdx].ignored = flags.ignored
+          if (flags.paid !== undefined) invoices.value[rawIdx].paid = flags.paid
+        }
       }
     } catch (e) {
-      // Revert on failure
-      if (idx >= 0 && prev) {
-        decryptedInvoices.value[idx] = prev as DecryptedInvoice
+      for (const [ref, snapshot] of snapshots) {
+        const idx = decryptedInvoices.value.findIndex(i => i.ksef_ref === ref)
+        if (idx >= 0) decryptedInvoices.value[idx] = snapshot
       }
       throw e
     }
@@ -272,6 +285,6 @@ export const useInvoicesStore = defineStore('invoices', () => {
   return {
     invoices, decryptedInvoices, decryptError,
     showIgnored, showPaid, loading, syncProgress,
-    fetchInvoices, updateFlags, syncFromKsef, redownloadInvoice, ensureLineItems,
+    fetchInvoices, updateFlags, bulkUpdateFlags, syncFromKsef, redownloadInvoice, ensureLineItems,
   }
 })
