@@ -43,7 +43,7 @@ function generateTransferLine(invoice: DecryptedInvoice, config: TransferConfig,
   return [
     '110',
     date,
-    String(toGrosze(invoice.gross_amount)),
+    String(toGrosze(invoice.payment_amount ?? invoice.gross_amount)),
     String(sortCode(config.senderAccount)),
     '0',
     `"${senderClean}"`,

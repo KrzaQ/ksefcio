@@ -86,6 +86,14 @@ export function parseInvoiceXml(xml: string, ksefRef: string): InvoiceData {
     }
   }
 
+  // Settlement (Fa > Rozliczenie > DoZaplaty) — actual amount to pay, may differ from P_15
+  const rozliczenie = fa ? find(fa, 'Rozliczenie') : null
+  let paymentAmount: string | undefined
+  if (rozliczenie) {
+    const doZaplaty = childText(rozliczenie, 'DoZaplaty')
+    if (doZaplaty) paymentAmount = doZaplaty
+  }
+
   // Payment info (Fa > Platnosc)
   const platnosc = fa ? find(fa, 'Platnosc') : null
   let dueDate: string | undefined
@@ -133,6 +141,7 @@ export function parseInvoiceXml(xml: string, ksefRef: string): InvoiceData {
     vat_amount: vatTotal.toFixed(2),
     gross_amount: grossAmount,
     currency,
+    payment_amount: paymentAmount,
     due_date: dueDate,
     bank_account: bankAccount,
     line_items: lineItems.length > 0 ? lineItems : undefined,

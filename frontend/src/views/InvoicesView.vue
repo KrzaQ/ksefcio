@@ -113,6 +113,13 @@ async function redownload(ksefRef: string) {
   }
 }
 
+async function copyXml(ksefRef: string) {
+  const xml = await store.getInvoiceXml(ksefRef)
+  if (xml) {
+    await navigator.clipboard.writeText(xml)
+  }
+}
+
 // Multi-select
 const selectedRefs = ref<Set<string>>(new Set())
 
@@ -382,6 +389,7 @@ async function doSync(nip: string) {
           <th @click="toggleSort('gross_amount')" class="py-2 px-2 text-right cursor-pointer select-none">
             Kwota brutto{{ sortIndicator('gross_amount') }}
           </th>
+          <th class="py-2 px-2 text-right">Do zapłaty</th>
           <th class="py-2 px-2">Termin płatności</th>
           <th class="py-2 px-2 text-center">Opłacona</th>
           <th class="py-2 px-2 text-center">Ignorowana</th>
@@ -406,10 +414,14 @@ async function doSync(nip: string) {
               </div>
               <div class="text-xs text-gray-500">{{ inv.seller_nip }}</div>
             </td>
-            <td class="py-2 px-2 text-right font-mono">
-              {{ formatAmount(inv.gross_amount) }} {{ inv.currency }}
+            <td class="py-2 px-2 text-right font-mono whitespace-nowrap">
+              {{ formatAmount(inv.gross_amount) }}&nbsp;{{ inv.currency }}
             </td>
-            <td class="py-2 px-2">{{ inv.due_date ?? '\u2014' }}</td>
+            <td class="py-2 px-2 text-right font-mono whitespace-nowrap"
+                :class="inv.payment_amount && inv.payment_amount !== inv.gross_amount ? 'text-amber-400' : 'text-gray-600'">
+              {{ formatAmount(inv.payment_amount ?? inv.gross_amount) }}&nbsp;{{ inv.currency }}
+            </td>
+            <td class="py-2 px-2 whitespace-nowrap">{{ inv.due_date ?? '\u2014' }}</td>
             <td class="py-2 px-2 text-center" @click.stop>
               <input type="checkbox" :checked="inv.paid" @change="togglePaid(inv)" />
             </td>
@@ -419,7 +431,7 @@ async function doSync(nip: string) {
           </tr>
           <!-- Expanded detail row -->
           <tr v-if="expandedRef === inv.ksef_ref">
-            <td colspan="8" class="bg-gray-900 px-4 py-3 border-b border-gray-800">
+            <td colspan="9" class="bg-gray-900 px-4 py-3 border-b border-gray-800">
               <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-sm max-w-lg mb-3">
                 <div>
                   <span class="text-gray-500 text-xs">Nabywca</span>
@@ -466,9 +478,15 @@ async function doSync(nip: string) {
                 <button
                   @click="redownload(inv.ksef_ref)"
                   :disabled="redownloading"
-                  class="text-gray-500 hover:text-gray-300 disabled:opacity-50"
+                  class="bg-gray-700 text-gray-200 px-3 py-1 rounded hover:bg-gray-600 disabled:opacity-50"
                 >
                   {{ redownloading ? 'Pobieranie...' : 'Pobierz ponownie z KSeF' }}
+                </button>
+                <button
+                  @click="copyXml(inv.ksef_ref)"
+                  class="bg-gray-700 text-gray-200 px-3 py-1 rounded hover:bg-gray-600"
+                >
+                  Kopiuj XML
                 </button>
                 <span v-if="redownloadError" class="text-red-400">{{ redownloadError }}</span>
               </div>

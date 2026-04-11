@@ -36,6 +36,7 @@ export interface InvoiceData {
   vat_amount: string
   gross_amount: string
   currency: string
+  payment_amount?: string
   due_date?: string
   bank_account?: string
   line_items?: LineItem[]
@@ -70,8 +71,10 @@ export const useInvoicesStore = defineStore('invoices', () => {
         const encrypted = base64ToArrayBuffer(inv.encrypted_blob)
         const plaintext = await decryptBlob(auth.aesKey!, encrypted)
         const stored: InvoiceData = JSON.parse(new TextDecoder().decode(plaintext))
-        if (!stored.bank_account && stored.xml) {
-          stored.bank_account = parseInvoiceXml(stored.xml, inv.ksef_ref).bank_account
+        if (stored.xml && (!stored.bank_account || stored.payment_amount === undefined)) {
+          const reparsed = parseInvoiceXml(stored.xml, inv.ksef_ref)
+          if (!stored.bank_account) stored.bank_account = reparsed.bank_account
+          if (stored.payment_amount === undefined) stored.payment_amount = reparsed.payment_amount
         }
         const { xml: _xml, ...data } = stored
         return {
@@ -282,9 +285,19 @@ export const useInvoicesStore = defineStore('invoices', () => {
     dec.line_items = parsed.line_items
   }
 
+  async function getInvoiceXml(ksefRef: string): Promise<string | null> {
+    const auth = useAuthStore()
+    if (!auth.aesKey) return null
+    const inv = invoices.value.find(i => i.ksef_ref === ksefRef)
+    if (!inv) return null
+    const encrypted = base64ToArrayBuffer(inv.encrypted_blob)
+    const stored: InvoiceData = JSON.parse(new TextDecoder().decode(await decryptBlob(auth.aesKey, encrypted)))
+    return stored.xml ?? null
+  }
+
   return {
     invoices, decryptedInvoices, decryptError,
     showIgnored, showPaid, loading, syncProgress,
-    fetchInvoices, updateFlags, bulkUpdateFlags, syncFromKsef, redownloadInvoice, ensureLineItems,
+    fetchInvoices, updateFlags, bulkUpdateFlags, syncFromKsef, redownloadInvoice, ensureLineItems, getInvoiceXml,
   }
 })
