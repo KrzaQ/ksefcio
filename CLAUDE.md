@@ -94,7 +94,7 @@ invoices
   ignored         -- bool, user marked as ignored
   paid            -- bool, user marked as paid
   encrypted_blob  -- encrypted invoice XML + metadata
-  UNIQUE(nip, ksef_ref)
+  UNIQUE(identity, nip, ksef_ref)
 ```
 
 ## KSeF CA chain
