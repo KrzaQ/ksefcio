@@ -139,7 +139,7 @@ async function login() {
 
     // 5. Save entity to localStorage (cert + encrypted key — preserves existing ksefNips)
     const existingEntity = entities.entities.find(e => e.identity === userId)
-    entities.addEntity({ identity: userId, name, certPem, keyPem, ksefNips: existingEntity?.ksefNips })
+    entities.addEntity({ identity: userId, name, certPem, keyPem, ksefNips: existingEntity?.ksefNips, nipSettings: existingEntity?.nipSettings })
 
     // 6. Set session state
     auth.login(signingKey, unwrapKey, derBytes, userId, name, aesKey)
