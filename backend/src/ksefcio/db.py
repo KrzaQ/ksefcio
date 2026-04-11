@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     encrypted_blob BLOB NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(nip, ksef_ref)
+    UNIQUE(identity, nip, ksef_ref)
 );
 
 CREATE INDEX IF NOT EXISTS idx_invoices_identity_nip ON invoices(identity, nip);
@@ -117,14 +117,14 @@ async def upsert_invoice(
     await db.execute(
         """INSERT INTO invoices (identity, nip, ksef_ref, encrypted_blob)
            VALUES (?, ?, ?, ?)
-           ON CONFLICT(nip, ksef_ref) DO UPDATE SET
+           ON CONFLICT(identity, nip, ksef_ref) DO UPDATE SET
              encrypted_blob = excluded.encrypted_blob,
              updated_at = datetime('now')""",
         (identity, nip, ksef_ref, encrypted_blob),
     )
     await db.commit()
     cursor = await db.execute(
-        "SELECT * FROM invoices WHERE nip = ? AND ksef_ref = ?", (nip, ksef_ref)
+        "SELECT * FROM invoices WHERE identity = ? AND nip = ? AND ksef_ref = ?", (identity, nip, ksef_ref)
     )
     row = await cursor.fetchone()
     return dict(row)

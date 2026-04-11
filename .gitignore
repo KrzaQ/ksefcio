@@ -8,3 +8,8 @@ __pycache__/
 *.sqlite
 .env
 uv.lock
+tmp/
+*.pem
+*.key
+*.p12
+*.pfx

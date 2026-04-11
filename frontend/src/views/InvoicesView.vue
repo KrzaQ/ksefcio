@@ -247,11 +247,8 @@ async function doSync(nip: string) {
       entity.ksefNips = [...(entity.ksefNips ?? []), nip]
       entities.addEntity(entity)
     }
-    console.log('[sync] KSeF auth success, fetching invoices...')
     const count = await store.syncFromKsef(tokens.accessToken)
-    console.log(`[sync] Synced ${count} new invoices`)
   } catch (e) {
-    console.error('[sync] Error:', e)
     syncError.value = e instanceof Error ? e.message : 'Nieznany błąd'
   } finally {
     syncing.value = false

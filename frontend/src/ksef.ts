@@ -62,8 +62,6 @@ export async function queryKsefInvoices(
       }
 
       const data = await res.json()
-      console.log('[ksef] Query metadata response:', JSON.stringify(data).slice(0, 500))
-
       const items: any[] = data.invoices ?? []
       for (const item of items) {
         allInvoices.push({
@@ -84,7 +82,6 @@ export async function queryKsefInvoices(
     }
   }
 
-  console.log(`[ksef] Found ${allInvoices.length} invoices`)
   return allInvoices
 }
 
@@ -109,8 +106,6 @@ export async function authenticateKsef(nip: string): Promise<{ accessToken: stri
   const auth = useAuthStore()
   if (!auth.signingKey) throw new Error('Not authenticated')
 
-  // 1. Prepare: backend gets challenge from KSeF, builds XAdES envelope
-  console.log('[ksef] Preparing auth for NIP', nip)
   const prepareRes = await apiFetch('/api/ksef/auth/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -122,13 +117,7 @@ export async function authenticateKsef(nip: string): Promise<{ accessToken: stri
   }
 
   const { request_id, signed_info_b64 } = await prepareRes.json()
-  console.log('[ksef] Got SignedInfo to sign, request_id:', request_id)
-
-  // 2. Sign the canonical SignedInfo bytes with the private key
   const signatureValue = await signDigest(auth.signingKey, base64ToArrayBuffer(signed_info_b64))
-  console.log('[ksef] Signed, submitting to KSeF...')
-
-  // 3. Finalize: backend inserts signature, submits to KSeF, redeems tokens
   const finalizeRes = await apiFetch('/api/ksef/auth/finalize', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -140,6 +129,5 @@ export async function authenticateKsef(nip: string): Promise<{ accessToken: stri
   }
 
   const tokens = await finalizeRes.json()
-  console.log('[ksef] Auth complete, got access token')
   return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token }
 }

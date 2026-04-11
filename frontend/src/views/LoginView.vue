@@ -86,37 +86,24 @@ async function login() {
 
   loading.value = true
   try {
-    // 1. Decrypt private key
-    console.log('[login] Decrypting private key...')
     const { signingKey, unwrapKey } = await decryptPrivateKey(keyPem, password.value)
-    console.log('[login] Key imported. Signing algo:', signingKey.algorithm.name)
 
-    // 2. Parse certificate
-    console.log('[login] Parsing certificate...')
     const { derBytes, publicKey } = await parseCertificate(certPem)
     const { nip: certNip, pesel, name } = extractIdentityFromCert(derBytes)
     const userId = certNip ?? pesel!
-    console.log('[login] Identity:', certNip ? `NIP ${certNip}` : `PESEL ${pesel}`, name)
 
-    // 3. Fetch user info from server
     const res = await signedFetch('/api/users/me', signingKey, derBytes)
-    console.log('[login] GET /api/users/me:', res.status)
     const userData = res.ok ? await res.json() : null
 
-    // 4. Load or setup AES key
     let aesKey = await loadAesKey(userId)
-    console.log('[login] AES key from IndexedDB:', aesKey ? 'found' : 'not found')
 
     if (!aesKey && userData?.wrapped_aes_key) {
-      console.log('[login] Unwrapping AES key from server...')
       const wrappedBytes = base64ToArrayBuffer(userData.wrapped_aes_key)
       aesKey = await unwrapAesKey(wrappedBytes, unwrapKey, publicKey)
       await storeAesKey(userId, aesKey)
-      console.log('[login] AES key unwrapped and stored')
     }
 
     if (!aesKey) {
-      console.log('[login] Generating new AES key...')
       const extractableKey = await generateAesKey()
       const wrappedBytes = await wrapAesKey(extractableKey, publicKey, unwrapKey)
 
@@ -134,25 +121,19 @@ async function login() {
 
       aesKey = await makeNonExtractable(extractableKey)
       await storeAesKey(userId, aesKey)
-      console.log('[login] AES key generated and stored')
     }
 
-    // 5. Save entity to localStorage (cert + encrypted key — preserves existing ksefNips)
+    // Save entity to localStorage (cert + encrypted key — preserves existing ksefNips)
     const existingEntity = entities.entities.find(e => e.identity === userId)
     entities.addEntity({ identity: userId, name, certPem, keyPem, ksefNips: existingEntity?.ksefNips, nipSettings: existingEntity?.nipSettings })
 
-    // 6. Set session state
     auth.login(signingKey, unwrapKey, derBytes, userId, name, aesKey)
     const serverNips: string[] = userData?.nips ?? []
     const entityNips: string[] = existingEntity?.ksefNips ?? []
     auth.knownNips = [...new Set([...entityNips, ...serverNips])]
     auth.activeNip = auth.knownNips[0] ?? null
-    console.log('[login] Session established for', userId, 'nips:', auth.knownNips)
-
-    // 7. Navigate
     router.push('/invoices')
   } catch (e) {
-    console.error('[login] Error:', e)
     error.value = e instanceof Error ? e.message : 'Nieznany błąd'
   } finally {
     loading.value = false
