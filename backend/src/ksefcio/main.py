@@ -118,6 +118,7 @@ async def list_invoices(
     invoices = await get_invoices(db, user.identity, nip, include_ignored)
     return [
         {
+            "id": inv["id"],
             "ksef_ref": inv["ksef_ref"],
             "ignored": bool(inv["ignored"]),
             "paid": bool(inv["paid"]),

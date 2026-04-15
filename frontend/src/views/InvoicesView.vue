@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useInvoicesStore, type DecryptedInvoice } from '../stores/invoices'
+import { useInvoicesStore, type DecryptedInvoice, type EffectiveInvoice } from '../stores/invoices'
 import { useAuthStore } from '../stores/auth'
 import { useEntitiesStore } from '../stores/entities'
 import { authenticateKsef } from '../ksef'
@@ -40,8 +40,8 @@ function selectNip(nip: string) {
   nipInput.value = nip
 }
 
-const filteredInvoices = computed(() => {
-  let list = store.decryptedInvoices
+const filteredInvoices = computed<EffectiveInvoice[]>(() => {
+  let list = store.effectiveInvoices
   if (!store.showPaid) {
     list = list.filter(i => !i.paid)
   }
@@ -77,6 +77,16 @@ function formatAmount(value: string): string {
   return isNaN(n) ? value : amountFmt.format(n)
 }
 
+function formatDelta(value?: string): string {
+  if (value === undefined || value === '') return ''
+  const n = parseFloat(value)
+  if (isNaN(n)) return value
+  const formatted = amountFmt.format(Math.abs(n))
+  if (n > 0) return `+${formatted}`
+  if (n < 0) return `\u2212${formatted}`
+  return formatted
+}
+
 function lineItemGross(net: string, vatRate?: string): string {
   const netNum = parseFloat(net)
   if (isNaN(netNum)) return ''
@@ -85,18 +95,28 @@ function lineItemGross(net: string, vatRate?: string): string {
   return amountFmt.format(gross)
 }
 
-async function togglePaid(inv: DecryptedInvoice) {
-  await store.updateFlags(inv.ksef_ref, { paid: !inv.paid })
+async function togglePaid(inv: EffectiveInvoice) {
+  const target = !inv.paid || inv.paid_mismatch
+  await store.bulkUpdateFlags(store.expandWithCorrections([inv.ksef_ref]), { paid: target })
 }
 
-async function toggleIgnored(inv: DecryptedInvoice) {
-  await store.updateFlags(inv.ksef_ref, { ignored: !inv.ignored })
+async function toggleIgnored(inv: EffectiveInvoice) {
+  const target = !inv.ignored || inv.ignored_mismatch
+  await store.bulkUpdateFlags(store.expandWithCorrections([inv.ksef_ref]), { ignored: target })
+}
+
+async function toggleCorrectionPaid(c: DecryptedInvoice) {
+  await store.bulkUpdateFlags([c.ksef_ref], { paid: !c.paid })
+}
+
+async function toggleCorrectionIgnored(c: DecryptedInvoice) {
+  await store.bulkUpdateFlags([c.ksef_ref], { ignored: !c.ignored })
 }
 
 // Inline detail expansion
 const expandedRef = ref<string | null>(null)
 
-function toggleExpand(inv: DecryptedInvoice) {
+function toggleExpand(inv: EffectiveInvoice) {
   if (expandedRef.value === inv.ksef_ref) {
     expandedRef.value = null
   } else {
@@ -144,7 +164,7 @@ const anySelectedMissingAccount = computed(() =>
   selectedInvoices.value.some(inv => !inv.bank_account)
 )
 
-function toggleSelect(inv: DecryptedInvoice) {
+function toggleSelect(inv: EffectiveInvoice) {
   const s = new Set(selectedRefs.value)
   if (s.has(inv.ksef_ref)) s.delete(inv.ksef_ref)
   else s.add(inv.ksef_ref)
@@ -173,7 +193,7 @@ async function bulkAction(flags: { ignored?: boolean; paid?: boolean }) {
   bulkActionLoading.value = true
   bulkActionError.value = ''
   try {
-    await store.bulkUpdateFlags([...selectedRefs.value], flags)
+    await store.bulkUpdateFlags(store.expandWithCorrections([...selectedRefs.value]), flags)
   } catch (e) {
     bulkActionError.value = e instanceof Error ? e.message : 'Nieznany błąd'
   } finally {
@@ -411,7 +431,34 @@ async function doSync(nip: string) {
               <input type="checkbox" :checked="selectedRefs.has(inv.ksef_ref)" @change="toggleSelect(inv)" />
             </td>
             <td class="py-2 px-2">{{ inv.issue_date }}</td>
-            <td class="py-2 px-2 font-mono text-xs">{{ inv.invoice_number }}</td>
+            <td class="py-2 px-2 font-mono text-xs">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span>{{ inv.invoice_number }}</span>
+                <span
+                  v-if="inv.has_corrections"
+                  class="text-amber-400 border border-amber-600/60 rounded px-1.5 py-0.5 text-[10px] font-sans"
+                  :title="'Liczba korekt: ' + inv.corrections.length"
+                >
+                  KOR ×{{ inv.corrections.length }}
+                </span>
+                <span
+                  v-if="inv.paid_mismatch || inv.ignored_mismatch"
+                  class="text-red-400 font-sans"
+                  title="Korekta nieodznaczona zgodnie z fakturą"
+                >⚠</span>
+                <span
+                  v-if="inv.is_orphan_correction"
+                  class="text-gray-400 border border-gray-600 rounded px-1.5 py-0.5 text-[10px] font-sans"
+                  :title="'Korekta faktury ' + (inv.corrects_invoice_number ?? '') + ' z dnia ' + (inv.corrects_issue_date ?? '?')"
+                >
+                  Korekta do {{ inv.corrects_invoice_number ?? '?' }}
+                </span>
+                <span
+                  v-if="inv.invoice_type && inv.invoice_type !== 'VAT' && !inv.is_orphan_correction"
+                  class="text-gray-500 text-[10px] font-sans"
+                >{{ inv.invoice_type }}</span>
+              </div>
+            </td>
             <td class="py-2 px-2">
               <div class="flex items-center gap-1">
                 <span>{{ inv.seller_name }}</span>
@@ -468,6 +515,45 @@ async function doSync(nip: string) {
                   <span class="text-gray-500 text-xs">KSeF</span>
                   <div class="text-xs text-gray-500">{{ inv.ksef_ref }}</div>
                 </div>
+              </div>
+
+              <!-- Corrections -->
+              <div v-if="inv.has_corrections" class="mb-3">
+                <div class="text-xs text-gray-500 mb-1">Korekty</div>
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="border-b border-gray-700 text-gray-500">
+                      <th class="py-1 px-2 text-left">Numer</th>
+                      <th class="py-1 px-2 text-left">Data</th>
+                      <th class="py-1 px-2 text-left">Przyczyna</th>
+                      <th class="py-1 px-2 text-right">Netto Δ</th>
+                      <th class="py-1 px-2 text-right">VAT Δ</th>
+                      <th class="py-1 px-2 text-right">Brutto Δ</th>
+                      <th class="py-1 px-2 text-right">Do zapłaty Δ</th>
+                      <th class="py-1 px-2 text-left">Konto</th>
+                      <th class="py-1 px-2 text-center">Opłacona</th>
+                      <th class="py-1 px-2 text-center">Ignor.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="c in inv.corrections" :key="c.ksef_ref" class="border-b border-gray-800">
+                      <td class="py-1 px-2 font-mono">{{ c.invoice_number }}</td>
+                      <td class="py-1 px-2 whitespace-nowrap">{{ c.issue_date }}</td>
+                      <td class="py-1 px-2">{{ c.correction_reason ?? '' }}</td>
+                      <td class="py-1 px-2 text-right font-mono">{{ formatDelta(c.net_amount) }}</td>
+                      <td class="py-1 px-2 text-right font-mono">{{ formatDelta(c.vat_amount) }}</td>
+                      <td class="py-1 px-2 text-right font-mono">{{ formatDelta(c.gross_amount) }}</td>
+                      <td class="py-1 px-2 text-right font-mono">{{ formatDelta(c.payment_amount ?? c.gross_amount) }}</td>
+                      <td class="py-1 px-2 font-mono text-[10px]">{{ c.bank_account ?? '' }}</td>
+                      <td class="py-1 px-2 text-center" @click.stop>
+                        <input type="checkbox" :checked="c.paid" @change="toggleCorrectionPaid(c)" />
+                      </td>
+                      <td class="py-1 px-2 text-center" @click.stop>
+                        <input type="checkbox" :checked="c.ignored" @change="toggleCorrectionIgnored(c)" />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
 
               <!-- Line items -->

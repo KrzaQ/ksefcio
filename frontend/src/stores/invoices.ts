@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { apiFetch } from '../api'
 import { useAuthStore } from './auth'
 import { decryptBlob, encryptBlob, arrayBufferToBase64, base64ToArrayBuffer } from '../crypto'
@@ -7,6 +7,7 @@ import { authenticateKsef, queryKsefInvoices, downloadKsefInvoice } from '../kse
 import { parseInvoiceXml } from '../invoiceParser'
 
 export interface Invoice {
+  id: number
   ksef_ref: string
   ignored: boolean
   paid: boolean
@@ -40,14 +41,28 @@ export interface InvoiceData {
   due_date?: string
   bank_account?: string
   line_items?: LineItem[]
+  invoice_type?: string              // 'VAT' | 'KOR' | 'KOR_ZAL' | 'KOR_ROZ' | 'ZAL' | 'ROZ' | 'UPR'
+  corrects_ksef_ref?: string
+  corrects_invoice_number?: string
+  corrects_issue_date?: string
+  correction_reason?: string
   xml?: string  // full FA XML from KSeF
 }
 
 export interface DecryptedInvoice extends InvoiceData {
+  id: number
   ignored: boolean
   paid: boolean
   created_at: string
   updated_at: string
+}
+
+export interface EffectiveInvoice extends DecryptedInvoice {
+  corrections: DecryptedInvoice[]
+  has_corrections: boolean
+  paid_mismatch: boolean
+  ignored_mismatch: boolean
+  is_orphan_correction: boolean
 }
 
 export const useInvoicesStore = defineStore('invoices', () => {
@@ -71,14 +86,26 @@ export const useInvoicesStore = defineStore('invoices', () => {
         const encrypted = base64ToArrayBuffer(inv.encrypted_blob)
         const plaintext = await decryptBlob(auth.aesKey!, encrypted)
         const stored: InvoiceData = JSON.parse(new TextDecoder().decode(plaintext))
-        if (stored.xml && (!stored.bank_account || stored.payment_amount === undefined)) {
+        if (stored.xml && (
+          !stored.bank_account
+          || stored.payment_amount === undefined
+          || stored.invoice_type === undefined
+        )) {
           const reparsed = parseInvoiceXml(stored.xml, inv.ksef_ref)
           if (!stored.bank_account) stored.bank_account = reparsed.bank_account
           if (stored.payment_amount === undefined) stored.payment_amount = reparsed.payment_amount
+          if (stored.invoice_type === undefined) {
+            stored.invoice_type = reparsed.invoice_type
+            stored.corrects_ksef_ref = reparsed.corrects_ksef_ref
+            stored.corrects_invoice_number = reparsed.corrects_invoice_number
+            stored.corrects_issue_date = reparsed.corrects_issue_date
+            stored.correction_reason = reparsed.correction_reason
+          }
         }
         const { xml: _xml, ...data } = stored
         return {
           ...data,
+          id: inv.id,
           ignored: inv.ignored,
           paid: inv.paid,
           created_at: inv.created_at,
@@ -98,6 +125,105 @@ export const useInvoicesStore = defineStore('invoices', () => {
     decryptError.value = failed > 0
       ? `Nie udało się odszyfrować ${failed} faktur(y)`
       : null
+  }
+
+  const effectiveInvoices = computed<EffectiveInvoice[]>(() => {
+    const all = decryptedInvoices.value
+    const corrections: DecryptedInvoice[] = []
+    const nonCorrections: DecryptedInvoice[] = []
+    for (const inv of all) {
+      if (inv.invoice_type?.startsWith('KOR')) corrections.push(inv)
+      else nonCorrections.push(inv)
+    }
+
+    const byRef = new Map<string, DecryptedInvoice>()
+    for (const inv of nonCorrections) byRef.set(inv.ksef_ref, inv)
+
+    const parentToCorrections = new Map<string, DecryptedInvoice[]>()
+    const orphans: DecryptedInvoice[] = []
+    for (const kor of corrections) {
+      const parent = kor.corrects_ksef_ref ? byRef.get(kor.corrects_ksef_ref) : undefined
+      if (parent) {
+        const list = parentToCorrections.get(parent.ksef_ref) ?? []
+        list.push(kor)
+        parentToCorrections.set(parent.ksef_ref, list)
+      } else {
+        orphans.push(kor)
+      }
+    }
+    for (const list of parentToCorrections.values()) list.sort((a, b) => a.id - b.id)
+
+    const result: EffectiveInvoice[] = []
+
+    for (const parent of nonCorrections) {
+      const kors = parentToCorrections.get(parent.ksef_ref) ?? []
+      if (kors.length === 0) {
+        result.push({
+          ...parent,
+          corrections: [],
+          has_corrections: false,
+          paid_mismatch: false,
+          ignored_mismatch: false,
+          is_orphan_correction: false,
+        })
+        continue
+      }
+
+      const parsed = (s?: string) => {
+        const n = parseFloat(s ?? '')
+        return isNaN(n) ? 0 : n
+      }
+      const net = parsed(parent.net_amount) + kors.reduce((s, k) => s + parsed(k.net_amount), 0)
+      const vat = parsed(parent.vat_amount) + kors.reduce((s, k) => s + parsed(k.vat_amount), 0)
+      const gross = parsed(parent.gross_amount) + kors.reduce((s, k) => s + parsed(k.gross_amount), 0)
+      const paymentBase = parent.payment_amount !== undefined ? parsed(parent.payment_amount) : parsed(parent.gross_amount)
+      const paymentDelta = kors.reduce((s, k) => s + (k.payment_amount !== undefined ? parsed(k.payment_amount) : parsed(k.gross_amount)), 0)
+      const payment = paymentBase + paymentDelta
+
+      let bankAccount = parent.bank_account
+      for (let i = kors.length - 1; i >= 0; i--) {
+        if (kors[i]!.bank_account) { bankAccount = kors[i]!.bank_account; break }
+      }
+
+      result.push({
+        ...parent,
+        net_amount: net.toFixed(2),
+        vat_amount: vat.toFixed(2),
+        gross_amount: gross.toFixed(2),
+        payment_amount: payment.toFixed(2),
+        bank_account: bankAccount,
+        corrections: kors,
+        has_corrections: true,
+        paid_mismatch: kors.some(k => k.paid !== parent.paid),
+        ignored_mismatch: kors.some(k => k.ignored !== parent.ignored),
+        is_orphan_correction: false,
+      })
+    }
+
+    for (const orphan of orphans) {
+      result.push({
+        ...orphan,
+        corrections: [],
+        has_corrections: false,
+        paid_mismatch: false,
+        ignored_mismatch: false,
+        is_orphan_correction: true,
+      })
+    }
+
+    return result
+  })
+
+  function expandWithCorrections(ksefRefs: string[]): string[] {
+    const expanded = new Set<string>()
+    for (const ref of ksefRefs) {
+      expanded.add(ref)
+      const eff = effectiveInvoices.value.find(i => i.ksef_ref === ref)
+      if (eff) {
+        for (const c of eff.corrections) expanded.add(c.ksef_ref)
+      }
+    }
+    return [...expanded]
   }
 
   async function fetchInvoices() {
@@ -298,8 +424,9 @@ export const useInvoicesStore = defineStore('invoices', () => {
   }
 
   return {
-    invoices, decryptedInvoices, decryptError,
+    invoices, decryptedInvoices, effectiveInvoices, decryptError,
     showIgnored, showPaid, loading, syncProgress,
-    fetchInvoices, updateFlags, bulkUpdateFlags, syncFromKsef, redownloadInvoice, ensureLineItems, getInvoiceXml,
+    fetchInvoices, updateFlags, bulkUpdateFlags, expandWithCorrections,
+    syncFromKsef, redownloadInvoice, ensureLineItems, getInvoiceXml,
   }
 })

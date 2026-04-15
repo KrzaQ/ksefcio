@@ -65,6 +65,18 @@ export function parseInvoiceXml(xml: string, ksefRef: string): InvoiceData {
   const currency = fa ? childText(fa, 'KodWaluty') || 'PLN' : 'PLN'
   const grossAmountRaw = fa ? childText(fa, 'P_15') : ''
 
+  const invoiceType = fa ? childText(fa, 'RodzajFaktury') || undefined : undefined
+  const correctionReason = fa ? childText(fa, 'PrzyczynaKorekty') || undefined : undefined
+  const daneFaKorygowanej = fa ? find(fa, 'DaneFaKorygowanej') : null
+  let correctsKsefRef: string | undefined
+  let correctsInvoiceNumber: string | undefined
+  let correctsIssueDate: string | undefined
+  if (daneFaKorygowanej) {
+    correctsKsefRef = childText(daneFaKorygowanej, 'NrKSeFFaKorygowanej') || undefined
+    correctsInvoiceNumber = childText(daneFaKorygowanej, 'NrFaKorygowanej') || undefined
+    correctsIssueDate = childText(daneFaKorygowanej, 'DataWystFaKorygowanej') || undefined
+  }
+
   // Net and VAT totals — sum P_13_* and P_14_* across all VAT rates
   let netTotal = 0
   let vatTotal = 0
@@ -145,5 +157,10 @@ export function parseInvoiceXml(xml: string, ksefRef: string): InvoiceData {
     due_date: dueDate,
     bank_account: bankAccount,
     line_items: lineItems.length > 0 ? lineItems : undefined,
+    invoice_type: invoiceType,
+    correction_reason: correctionReason,
+    corrects_ksef_ref: correctsKsefRef,
+    corrects_invoice_number: correctsInvoiceNumber,
+    corrects_issue_date: correctsIssueDate,
   }
 }
