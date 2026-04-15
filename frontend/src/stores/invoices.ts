@@ -298,12 +298,9 @@ export const useInvoicesStore = defineStore('invoices', () => {
     const auth = useAuthStore()
     if (!auth.activeNip || !auth.aesKey) throw new Error('No active NIP or AES key')
 
-    // Fetch raw invoice list (without decrypting) to know which refs we already have
-    const params = new URLSearchParams()
-    if (showIgnored.value) params.set('include_ignored', 'true')
-    const qs = params.toString()
-    const base = `/api/invoices/${auth.activeNip}`
-    const existingRes = await apiFetch(qs ? `${base}?${qs}` : base)
+    // Fetch raw invoice list (without decrypting) to know which refs we already have.
+    // Always include ignored — otherwise ignored invoices look "new" to KSeF and get redownloaded.
+    const existingRes = await apiFetch(`/api/invoices/${auth.activeNip}?include_ignored=true`)
     const existingList: Invoice[] = existingRes.ok ? await existingRes.json() : []
     const existingRefs = new Set(existingList.map(i => i.ksef_ref))
 
