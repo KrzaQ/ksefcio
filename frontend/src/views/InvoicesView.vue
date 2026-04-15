@@ -77,6 +77,14 @@ function formatAmount(value: string): string {
   return isNaN(n) ? value : amountFmt.format(n)
 }
 
+function lineItemGross(net: string, vatRate?: string): string {
+  const netNum = parseFloat(net)
+  if (isNaN(netNum)) return ''
+  const rateNum = vatRate ? parseFloat(vatRate) : NaN
+  const gross = isNaN(rateNum) ? netNum : netNum * (1 + rateNum / 100)
+  return amountFmt.format(gross)
+}
+
 async function togglePaid(inv: DecryptedInvoice) {
   await store.updateFlags(inv.ksef_ref, { paid: !inv.paid })
 }
@@ -439,6 +447,19 @@ async function doSync(nip: string) {
                   <span class="text-gray-500 text-xs">Netto / VAT</span>
                   <div>{{ formatAmount(inv.net_amount) }} + {{ formatAmount(inv.vat_amount) }} {{ inv.currency }}</div>
                 </div>
+                <div>
+                  <span class="text-gray-500 text-xs">Brutto</span>
+                  <div class="font-mono whitespace-nowrap">{{ formatAmount(inv.gross_amount) }}&nbsp;{{ inv.currency }}</div>
+                </div>
+                <div>
+                  <span class="text-gray-500 text-xs">Do zapłaty</span>
+                  <div
+                    class="font-mono whitespace-nowrap"
+                    :class="inv.payment_amount && inv.payment_amount !== inv.gross_amount ? 'text-amber-400' : 'text-gray-600'"
+                  >
+                    {{ formatAmount(inv.payment_amount ?? inv.gross_amount) }}&nbsp;{{ inv.currency }}
+                  </div>
+                </div>
                 <div v-if="inv.bank_account">
                   <span class="text-gray-500 text-xs">Konto bankowe</span>
                   <div class="font-mono text-xs">{{ inv.bank_account }}</div>
@@ -458,6 +479,7 @@ async function doSync(nip: string) {
                     <th class="py-1 px-2 text-right">Cena jedn.</th>
                     <th class="py-1 px-2 text-right">Netto</th>
                     <th class="py-1 px-2 text-right">VAT</th>
+                    <th class="py-1 px-2 text-right">Brutto</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -467,6 +489,7 @@ async function doSync(nip: string) {
                     <td class="py-1 px-2 text-right font-mono">{{ item.unit_price ? formatAmount(item.unit_price) : '' }}</td>
                     <td class="py-1 px-2 text-right font-mono">{{ formatAmount(item.net_amount) }}</td>
                     <td class="py-1 px-2 text-right">{{ item.vat_rate ?? '' }}{{ item.vat_rate && !isNaN(Number(item.vat_rate)) ? '%' : '' }}</td>
+                    <td class="py-1 px-2 text-right font-mono">{{ lineItemGross(item.net_amount, item.vat_rate) }}</td>
                   </tr>
                 </tbody>
               </table>
