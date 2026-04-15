@@ -133,7 +133,7 @@ async function redownload(ksefRef: string) {
   redownloading.value = true
   redownloadError.value = ''
   try {
-    await store.redownloadInvoice(ksefRef)
+    await store.redownloadInvoices(store.expandWithCorrections([ksefRef]))
   } catch (e) {
     redownloadError.value = e instanceof Error ? e.message : 'Nieznany błąd'
   } finally {

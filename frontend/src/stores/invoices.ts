@@ -362,34 +362,39 @@ export const useInvoicesStore = defineStore('invoices', () => {
   }
 
   async function redownloadInvoice(ksefRef: string): Promise<void> {
+    await redownloadInvoices([ksefRef])
+  }
+
+  async function redownloadInvoices(ksefRefs: string[]): Promise<void> {
     const auth = useAuthStore()
     if (!auth.activeNip || !auth.aesKey) {
       throw new Error('Brak aktywnego NIP lub klucza szyfrującego')
     }
 
-    // Authenticate with KSeF if we don't have a token yet
     if (!auth.ksefAccessToken) {
       const tokens = await authenticateKsef(auth.activeNip)
       auth.ksefAccessToken = tokens.accessToken
     }
 
-    const xml = await downloadKsefInvoice(ksefRef, auth.ksefAccessToken!)
-    const data = parseInvoiceXml(xml, ksefRef)
-    data.xml = xml
+    for (const ksefRef of ksefRefs) {
+      const xml = await downloadKsefInvoice(ksefRef, auth.ksefAccessToken!)
+      const data = parseInvoiceXml(xml, ksefRef)
+      data.xml = xml
 
-    const plaintext = new TextEncoder().encode(JSON.stringify(data))
-    const encrypted = await encryptBlob(auth.aesKey, plaintext.buffer as ArrayBuffer)
-    const blob = arrayBufferToBase64(encrypted)
+      const plaintext = new TextEncoder().encode(JSON.stringify(data))
+      const encrypted = await encryptBlob(auth.aesKey, plaintext.buffer as ArrayBuffer)
+      const blob = arrayBufferToBase64(encrypted)
 
-    const res = await apiFetch(
-      `/api/invoices/${auth.activeNip}/${encodeURIComponent(ksefRef)}`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ encrypted_blob: blob }),
-      },
-    )
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const res = await apiFetch(
+        `/api/invoices/${auth.activeNip}/${encodeURIComponent(ksefRef)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ encrypted_blob: blob }),
+        },
+      )
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    }
 
     await fetchInvoices()
   }
@@ -427,6 +432,6 @@ export const useInvoicesStore = defineStore('invoices', () => {
     invoices, decryptedInvoices, effectiveInvoices, decryptError,
     showIgnored, showPaid, loading, syncProgress,
     fetchInvoices, updateFlags, bulkUpdateFlags, expandWithCorrections,
-    syncFromKsef, redownloadInvoice, ensureLineItems, getInvoiceXml,
+    syncFromKsef, redownloadInvoice, redownloadInvoices, ensureLineItems, getInvoiceXml,
   }
 })
