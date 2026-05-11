@@ -5,10 +5,13 @@ description = "Local credential agent and MCP shim for ksefcio."
 requires-python = ">=3.12"
 dependencies = [
     "cryptography>=44.0",
+    "httpx>=0.28",
+    "mcp>=1.0",
 ]
 
 [project.scripts]
 ksefcio-agent = "ksefcio_client.agent:main"
+ksefcio-mcp = "ksefcio_client.mcp_shim:main"
 
 [dependency-groups]
 dev = [

@@ -1,4 +1,4 @@
-.PHONY: dev-backend dev-frontend dev-agent client-install client-test build clean
+.PHONY: dev-backend dev-frontend dev-agent dev-mcp client-install client-test build clean
 
 dev-backend:
 	cd backend && KSEFCIO_DEV=1 KSEF_API_URL=$${KSEF_API_URL:-https://api-test.ksef.mf.gov.pl/v2} uv run fastapi dev src/ksefcio/main.py
@@ -14,6 +14,15 @@ dev-agent:
 	cd client && uv run ksefcio-agent --cert $(CERT) --key $(KEY) \
 		$(if $(SOCKET),--socket $(SOCKET),) \
 		$(if $(DAEMON),--daemon,)
+
+dev-mcp:
+	@if [ -z "$(BACKEND)" ]; then \
+		echo "Usage: make dev-mcp BACKEND=https://your-ksefcio [SOCKET=path] [INSECURE=1]"; \
+		exit 2; \
+	fi
+	cd client && uv run ksefcio-mcp --backend $(BACKEND) \
+		$(if $(SOCKET),--socket $(SOCKET),) \
+		$(if $(INSECURE),--insecure,)
 
 client-install:
 	cd client && uv sync
